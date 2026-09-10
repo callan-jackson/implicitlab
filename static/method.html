@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Method — ImplicitLab</title>
+<meta name="description" content="How ImplicitLab measures response latency in a browser, computes the Greenwald (2003) D-score, applies data-quality exclusions, and keeps the language model downstream of the statistics." />
+<link rel="icon" href="/static/assets/favicon.svg" type="image/svg+xml" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/static/css/app.css" />
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead__inner">
+    <a class="brand" href="/">
+      <span class="brand__mark">IL</span>
+      ImplicitLab
+      <span class="brand__sub">reaction-time testing</span>
+    </a>
+    <div class="masthead__spacer"></div>
+    <nav class="masthead__links">
+      <a href="/">Run a test</a>
+      <a href="/api/docs">API</a>
+      <a href="https://github.com/callan-jackson/implicitlab" target="_blank" rel="noopener">Code ↗</a>
+    </nav>
+  </div>
+</header>
+
+<main class="stage">
+<div class="wrap prose">
+
+  <span class="eyebrow">Method</span>
+  <h1 class="title">How the measurement works</h1>
+  <p class="lede">
+    This page is the part a reviewer would ask for: what is actually measured, what
+    the error term is, which published procedure is implemented, and where the
+    decisions were not obvious. Everything below is implemented in the repository
+    and covered by tests.
+  </p>
+
+  <h2>1. What an implicit association test measures</h2>
+  <p>
+    The claim an IAT supports is narrow and mechanical: <strong>a participant sorts
+    items faster when the two categories sharing a response key are already
+    associated in memory</strong>. It does not read minds, does not reveal hidden
+    beliefs, and is not a lie detector. The interesting property is that the
+    participant cannot easily fake it in the direction they want, because the
+    quantity being measured is how fast they can press a key, not what they choose
+    to say.
+  </p>
+  <p>
+    The instrument is <em>relative</em> by construction. A two-target IAT compares
+    Brand A against Brand B; it cannot tell you whether A is fast or B is slow, and
+    the comparator you pick partly determines the answer. Where there is no fair
+    comparator, the right instrument is a single-category test — a genuinely
+    different algorithm, not a flag on the same one. Both are implemented here.
+  </p>
+
+  <h2>2. Block structure</h2>
+  <p>
+    Seven blocks, following Greenwald, Nosek &amp; Banaji (2003), with Block 5
+    lengthened to 30 trials per the 2022 best-practice update, which found that
+    change "often keeps the effect of order of combined tasks to a minimum". Two
+    calibration blocks run first and feed no part of D.
+  </p>
+
+  <div class="scroll-x">
+  <table class="data">
+    <thead><tr><th>Block</th><th>Task</th><th>Left — E</th><th>Right — I</th><th>Trials</th><th>Scored</th></tr></thead>
+    <tbody>
+      <tr><td>C1</td><td>Motor calibration</td><td>◀ arrow</td><td>▶ arrow</td><td class="num">20</td><td>covariate</td></tr>
+      <tr><td>C2</td><td>Reading calibration</td><td colspan="2">phrases of varying length</td><td class="num">10</td><td>covariate</td></tr>
+      <tr><td>B1</td><td>Target discrimination</td><td>Brand A</td><td>Brand B</td><td class="num">20</td><td>no</td></tr>
+      <tr><td>B2</td><td>Attribute discrimination</td><td>Pole A</td><td>Pole B</td><td class="num">20</td><td>no</td></tr>
+      <tr><td>B3</td><td>Combined, practice</td><td>A + Pole A</td><td>B + Pole B</td><td class="num">20</td><td><strong>yes</strong></td></tr>
+      <tr><td>B4</td><td>Combined, test</td><td>A + Pole A</td><td>B + Pole B</td><td class="num">40</td><td><strong>yes</strong></td></tr>
+      <tr><td>B5</td><td>Reversed targets</td><td>Brand B</td><td>Brand A</td><td class="num">30</td><td>no</td></tr>
+      <tr><td>B6</td><td>Combined, practice</td><td>B + Pole A</td><td>A + Pole B</td><td class="num">20</td><td><strong>yes</strong></td></tr>
+      <tr><td>B7</td><td>Combined, test</td><td>B + Pole A</td><td>A + Pole B</td><td class="num">40</td><td><strong>yes</strong></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>
+    <strong>Counterbalancing.</strong> Which pairing a participant meets first is
+    drawn from the session seed. This is not optional tidiness: whichever pairing
+    comes second carries a practice advantage, so a fixed order does not add noise,
+    it adds bias in a direction the researcher chose. Which side Brand A starts on
+    is counterbalanced too, which removes a handedness confound from the raw
+    latencies even though it cancels in D.
+  </p>
+  <p>
+    <strong>Trial ordering.</strong> Combined blocks alternate a target trial and an
+    attribute trial. Without alternation a participant can batch-process one
+    dimension and the task degrades into two separate sorting tasks. Exemplars are
+    drawn without replacement within a cycle, and no category is allowed to repeat
+    more than three times running — a long run lets someone stop reading and just
+    repeat the last keypress, which produces fast, correct, meaningless trials.
+  </p>
+  <p>
+    <strong>Errors.</strong> A wrong key shows a red ✗ and the trial does not advance
+    until the correct key is pressed. The engine records both clocks: time to the
+    first keypress and time to the correct one. That means either published error
+    procedure can be run against the same raw file, and it removes the arbitrary
+    choice between a 600 ms penalty and a 2 SD penalty, because with forced
+    correction the penalty is built into the measurement.
+  </p>
+
+  <h2>3. Timing, and what its error term actually is</h2>
+  <p>
+    A reaction time is the interval between two physical events: light changing on a
+    display, and a switch closing under a finger. A browser observes neither. It
+    observes when it handed a frame to the compositor and when the operating system
+    delivered an input event. Three techniques close most of the gap.
+  </p>
+
+  <h3>Stimulus onset — nested requestAnimationFrame</h3>
+  <p>
+    A rAF callback runs <em>before</em> the paint of the frame it belongs to. So the
+    stimulus is written to the DOM inside rAF #1, which means it is painted in that
+    frame, and the timestamp handed to a nested rAF #2 marks the start of the
+    following frame — the first moment the browser can confirm the previous frame
+    went out. Timestamping with <code>performance.now()</code> at the moment
+    <code>textContent</code> is set would be wrong by up to a full frame plus layout
+    time, and wrong in the same direction on every trial.
+  </p>
+
+  <h3>Response — event.timeStamp, not performance.now()</h3>
+  <p>
+    For trusted events the browser stamps <code>timeStamp</code> when it creates the
+    event, on the same monotonic clock as <code>performance.now()</code>. Reading the
+    clock inside the handler instead measures when the event loop got round to the
+    page, which adds however long the main thread was busy. That gap is real,
+    variable, and measured here per trial: it is reported on the dashboard as
+    <em>event-loop delay</em>, and it is a direct measurement of the error the naive
+    approach would have introduced.
+  </p>
+
+  <h3>Refresh rate — measured, not assumed</h3>
+  <p>
+    Onset can only be known to within the frame it was painted in. The frame interval
+    is measured at startup from the median of ~90 animation frames, using the median
+    rather than the mean so a single dropped frame does not drag the estimate. On a
+    60 Hz panel the irreducible onset uncertainty is about ±8 ms; on 120 Hz it is
+    ±4 ms. Assuming 60 Hz would silently change the error term on half of modern
+    laptops.
+  </p>
+
+  <blockquote>
+    None of this removes display lag — the panel's own processing delay, typically
+    5–20 ms and invisible to software. That is a constant offset, so it cancels in
+    any within-participant difference score. It would not cancel in a claim about
+    absolute latency, which is one reason D is defined as a difference in the first
+    place.
+  </blockquote>
+
+  <h2>4. The D-score</h2>
+  <p>
+    The recommended procedure of Greenwald, Nosek &amp; Banaji (2003, Table 4), with
+    the four steps that re-implementations most often get wrong called out.
+  </p>
+
+  <div class="scroll-x">
+  <table class="data">
+    <thead><tr><th>Step</th><th>What is done</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>Use only the four combined blocks, resolved by <strong>pairing</strong>, never by presentation order.</td></tr>
+      <tr><td>2</td><td>Drop trials over 10,000 ms. Do <strong>not</strong> trim fast trials — fast responding is signal, and trimming it biases D toward zero.</td></tr>
+      <tr><td>3</td><td>If more than 10% of a participant's retained trials are under 300 ms, exclude <strong>the participant</strong>. This is not a trial filter.</td></tr>
+      <tr><td>4</td><td>Mean of <em>correct</em> latencies per block — used only to build the error replacement.</td></tr>
+      <tr><td>5</td><td>One <strong>inclusive SD</strong> per block pair: concatenate every retained trial from both pairings, errors included, and take a single SD ignoring block membership.</td></tr>
+      <tr><td>6</td><td>Error handling. With forced correction, nothing is substituted.</td></tr>
+      <tr><td>7</td><td>Mean over <em>all</em> scored trials per cell — a different mean from step 4.</td></tr>
+      <tr><td>8–10</td><td>Two differences, each divided by its own inclusive SD, then averaged unweighted.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>The denominator is the thing to get right</h3>
+  <p>
+    The inclusive SD is deliberately <strong>not</strong> Cohen's pooled-within-condition
+    SD, not the SD of difference scores, not the mean of the two blocks' SDs, and not
+    one block's SD. Because the two blocks have different means, the between-block
+    variance is part of the denominator on purpose — that is what makes D behave like
+    an individual-level effect size. There is a genuine trap in the source: Table 4
+    uses the word "pooled", which reads like Cohen's; the body text is the
+    unambiguous version, computing the SD "ignoring the condition membership of each
+    score". A unit test in this repository pins the two apart and asserts they differ.
+  </p>
+
+  <h3>A published disagreement, stated rather than hidden</h3>
+  <p>
+    The 2003 paper orders the steps so the SD is computed <em>before</em> error
+    latencies are replaced. The 2022 best-practice paper says the opposite, and the
+    two most-used reference implementations follow the 2022 wording. Rather than pick
+    a side silently, this is a configuration flag, both paths are tested, and the
+    shipped default uses forced error correction — under which no substitution
+    happens and the question cannot arise. The dashboard reports the alternative
+    scorings side by side so you can see whether the conclusion depends on the choice.
+  </p>
+
+  <h3>Interpretation bands</h3>
+  <p>
+    0.15 / 0.35 / 0.65 are the <strong>Project Implicit reporting convention</strong>,
+    not Cohen's <em>d</em> cut-offs, which are 0.20 / 0.50 / 0.80. They describe the
+    size of a latency difference, not its reliability, and this tool labels them
+    accordingly.
+  </p>
+
+  <h2>5. Inference without assuming normality</h2>
+  <p>
+    Reaction times are strongly right-skewed — approximately ex-Gaussian, a normal
+    convolved with an exponential tail. A t-test on raw latencies assumes a symmetry
+    the data does not have, and the tail is exactly where the interesting variance
+    lives. Everything inferential here is therefore resampling-based:
+  </p>
+  <ul>
+    <li>
+      <strong>Percentile bootstrap</strong> for the interval around D, resampling
+      trials with replacement <em>within</em> each block-pairing cell so the design
+      is preserved and the bootstrap estimates error in the latencies rather than in
+      the block structure.
+    </li>
+    <li>
+      <strong>Permutation test</strong> for whether D differs from zero, shuffling
+      pairing labels within each block pair. This is answerable from one
+      participant's data because the trials themselves are the exchangeable units.
+      An add-one correction is applied, because a permutation p-value should never
+      be exactly zero: the observed arrangement is itself one of the possibilities.
+    </li>
+    <li>
+      <strong>Split-half diagnostic</strong>: D recomputed on odd- and even-numbered
+      trials. A wide gap means the estimate is unstable within the session itself,
+      whatever the headline number says.
+    </li>
+  </ul>
+
+  <h2>6. What a single session can and cannot support</h2>
+  <p>
+    This is the limitation that matters most and the one demos usually omit. The
+    IAT's test–retest reliability is around <em>r</em> = .50. Greenwald's own
+    assessment is that this is "not adequate to justify treating a single IAT
+    observation as accurately diagnostic". Cummins &amp; Hussey (2026, <em>Behavior
+    Research Methods</em>) put numbers on it: a D of exactly zero carries a 95%
+    confidence interval of roughly −0.38 to +0.38, the narrowest intervals they
+    observed were wider than the gaps between the conventional labels, and only about
+    half of participants had scores detectably different from zero.
+  </p>
+  <p>
+    So the instrument is a <strong>group-level</strong> measure. This tool reports an
+    interval rather than a verdict, refuses to produce a number at all when the
+    exclusion criteria fire, and says on every report that one session is one person
+    on one occasion.
+  </p>
+
+  <h2>7. The language model, and where its boundary is</h2>
+  <p>
+    The model receives a fixed block of numbers that Python has already computed,
+    tested and quality-flagged. It sees no trial rows and no raw latencies, so it
+    cannot recompute anything, and it is not asked to: even the trivially derivable
+    judgements — does the interval exclude zero, is the result significant, is the
+    session usable — are computed in Python and handed over as a verdict. A wrong
+    claim about a correct number is the one failure a numeric check cannot catch,
+    so the model is never put in a position to make one.
+  </p>
+  <p>
+    What it returns is then checked. Every number in the generated text is extracted
+    and matched against the payload; if any figure cannot be traced, the draft is
+    rejected, the deterministic summary is published instead, and the rejected draft
+    is shown alongside the reason. The prompt is displayed in full on every report,
+    because if a model writes part of a research report then the instructions it was
+    given are part of the method.
+  </p>
+  <p>
+    If no model is configured, or the call fails, a rules-based engine produces the
+    same report from the same numbers and the response says which engine wrote it.
+    The product does not break when the model is unavailable.
+  </p>
+  <p>
+    One thing the model is explicitly <em>not</em> for: generating respondents. An
+    implicit measure is a measurement of human cognitive processing speed. There is
+    no latency to simulate, because there is no cognition being timed.
+  </p>
+
+  <h2>8. Reproducibility and data</h2>
+  <ul>
+    <li>A session is a <code>(study, seed)</code> pair. The same seed regenerates a
+      byte-identical trial sequence and the same counterbalancing, verified by a test
+      that runs the generator in subprocesses under different hash seeds.</li>
+    <li>The design is generated and stored server-side, so the condition a
+      participant was in is a recorded fact rather than something the browser
+      reported.</li>
+    <li>Every session exports as trial-level CSV and as a complete JSON record
+      including the design, the counterbalance, the seed and the client metadata.</li>
+    <li>Scoring parameters are serialised into every result, so a number always
+      carries the configuration that produced it.</li>
+  </ul>
+
+  <h2>9. Limitations</h2>
+  <ul>
+    <li>Word stimuli only. Production pack testing uses images, which changes onset
+      timing (decode and paint cost) and needs preloading and per-image onset
+      verification.</li>
+    <li>Desktop keyboard only. Touch changes the motor component substantially and
+      would need its own calibration.</li>
+    <li>Individual-level reporting, with all the caveats in section 6. Group-level
+      aggregation, power analysis and mixed-effects modelling across a panel are the
+      obvious next step and are not built.</li>
+    <li>The comparison distribution shown at the end is a convenience sample of
+      whoever opened the link. It is not a norm.</li>
+    <li>The speeded attribute-association format that commercial platforms mostly
+      sell — one stimulus, many attributes, roughly two minutes — is not implemented.
+      For brand-image mapping under a fifteen-minute session budget it is arguably a
+      better fit than either instrument here.</li>
+  </ul>
+
+  <h2>References</h2>
+  <ul>
+    <li>Greenwald, A. G., Nosek, B. A., &amp; Banaji, M. R. (2003). Understanding and
+      using the Implicit Association Test: I. An improved scoring algorithm.
+      <em>Journal of Personality and Social Psychology, 85</em>(2), 197–216.</li>
+    <li>Greenwald, A. G., Brendl, M., Cai, H., et al. (2022). Best research practices
+      for using the Implicit Association Test. <em>Behavior Research Methods, 54</em>,
+      1161–1180.</li>
+    <li>Karpinski, A., &amp; Steinman, R. B. (2006). The Single Category Implicit
+      Association Test as a measure of implicit social cognition.
+      <em>Journal of Personality and Social Psychology, 91</em>(1), 16–32.</li>
+    <li>Richetin, J., Costantini, G., Perugini, M., &amp; Schönbrodt, F. (2015).
+      Should we stop looking for a better scoring algorithm for handling Implicit
+      Association Test data? <em>PLOS ONE, 10</em>(6): e0129601.</li>
+    <li>Cummins, J., &amp; Hussey, I. (2026). Individual-level confidence intervals
+      for IAT scores. <em>Behavior Research Methods, 58</em>:21.</li>
+    <li>Bridges, D., Pitiot, A., MacAskill, M. R., &amp; Peirce, J. W. (2020). The
+      timing mega-study: comparing a range of experiment generators.
+      <em>PeerJ, 8</em>:e9414.</li>
+    <li>Anwyl-Irvine, A., Dalmaijer, E. S., Hodges, N., &amp; Evershed, J. K. (2021).
+      Realistic precision and accuracy of online experiment platforms.
+      <em>Behavior Research Methods, 53</em>, 1407–1425.</li>
+  </ul>
+
+  <div class="btn-row" style="margin-top:2.5rem">
+    <a class="btn btn--primary" href="/">Run a test →</a>
+    <a class="btn btn--ghost" href="https://github.com/callan-jackson/implicitlab" target="_blank" rel="noopener">Read the code ↗</a>
+  </div>
+
+</div>
+</main>
+
+<footer class="footer">
+  <div class="wrap footer__row">
+    <span>ImplicitLab — built by <a href="https://callan-jackson.github.io/" target="_blank" rel="noopener">Callan Jackson</a></span>
+    <span>Demonstration software. Not a clinical or diagnostic instrument.</span>
+  </div>
+</footer>
+
+</body>
+</html>

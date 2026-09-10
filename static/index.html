@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ImplicitLab — implicit reaction-time testing</title>
+<meta name="description" content="A browser-based implicit association testing platform: millisecond response-latency capture, Greenwald (2003) D-scoring with its data-quality rules, distribution-free resampling inference, and an LLM reporting layer kept downstream of the statistics." />
+<link rel="icon" href="/static/assets/favicon.svg" type="image/svg+xml" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/static/css/app.css" />
+<!-- Chart.js is vendored rather than pulled from a CDN. A demo that has to work
+     on someone else's network is not the place to depend on a third-party host
+     resolving, and self-hosting also pins the exact version the charts were
+     built against. -->
+<script src="/static/vendor/chart.umd.min.js" defer></script>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead__inner">
+    <a class="brand" href="/">
+      <span class="brand__mark">IL</span>
+      ImplicitLab
+      <span class="brand__sub">reaction-time testing</span>
+    </a>
+    <div class="masthead__spacer"></div>
+    <nav class="masthead__links">
+      <a href="/method">Method</a>
+      <a href="/api/docs">API</a>
+      <a href="https://github.com/callan-jackson/implicitlab" target="_blank" rel="noopener">Code ↗</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+<!-- ================================================== SETUP ============ -->
+<section class="stage" id="screen-setup">
+  <div class="wrap">
+    <div class="lede">
+      <span class="eyebrow">Implicit association testing</span>
+      <h1 class="title">Measuring what people don't say.</h1>
+      <p>
+        An implicit association test measures how quickly you sort things into categories
+        when those categories share a key. If two ideas are already linked in your head,
+        pairing them is easy and you are fast. If they aren't, you hesitate — by
+        somewhere between forty and two hundred milliseconds. That gap is the measurement.
+      </p>
+      <p>
+        This runs the real thing: the seven-block design from Greenwald, Nosek and Banaji
+        (2003), scored with their improved <em>D</em> algorithm, with the data-quality
+        exclusions applied, a bootstrap interval around the estimate, and a written
+        summary produced by a language model that is never allowed to see a raw latency.
+      </p>
+    </div>
+
+    <div class="grid grid--2" style="margin-top:2.5rem; align-items:start;">
+
+      <div class="card">
+        <div class="card__head"><h3>1 · Choose a study</h3></div>
+        <div class="field">
+          <label for="studySelect">Study</label>
+          <select id="studySelect"></select>
+          <p class="field__hint" id="studyBlurb"></p>
+        </div>
+
+        <div class="field">
+          <label>Length</label>
+          <div class="choices" id="presetChoices"></div>
+        </div>
+
+        <details class="disclosure">
+          <summary>Advanced — custom brands and a fixed seed</summary>
+          <div class="disclosure__body">
+            <div class="field">
+              <label for="brandA">Brand A</label>
+              <input type="text" id="brandA" placeholder="leave blank to use the selected study" maxlength="24" />
+            </div>
+            <div class="field">
+              <label for="brandB">Brand B (leave blank for a single-category test)</label>
+              <input type="text" id="brandB" maxlength="24" />
+            </div>
+            <div class="field">
+              <label for="dimSelect">Attribute dimension</label>
+              <select id="dimSelect"></select>
+            </div>
+            <div class="field">
+              <label for="seedInput">Session seed</label>
+              <input type="number" id="seedInput" placeholder="blank = random" min="0" max="2147483647" />
+              <p class="field__hint">
+                The seed decides the trial order and both counterbalancing factors. Two
+                sessions with the same seed present exactly the same stimuli in exactly
+                the same order — which is what makes a session re-analysable rather than
+                merely repeatable.
+              </p>
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <div class="card">
+        <div class="card__head"><h3>2 · Before you start</h3></div>
+        <p style="font-size:0.92rem;color:var(--ink-mid)">
+          You will see brand names and descriptive words one at a time. Press
+          <kbd>E</kbd> for the category shown on the left and <kbd>I</kbd> for the one on
+          the right. Go as fast as you can while staying accurate — a wrong key shows a
+          red ✗ and you must correct it before the next trial.
+        </p>
+        <p style="font-size:0.92rem;color:var(--ink-mid)">
+          Use a physical keyboard, sit somewhere without interruptions, and keep this tab
+          in the foreground. The task detects and reports it if you switch away.
+        </p>
+
+        <div class="banner banner--info" style="margin-top:1.2rem">
+          <span class="banner__icon">ⓘ</span>
+          <span>
+            <strong>What is recorded.</strong> Your response times and keypresses for this
+            session, plus your display's refresh rate. No name, no email, no IP address, no
+            cookie, no tracker. Data is stored against a random session ID so the result page
+            can be reloaded, and it is used to build the comparison distribution shown at the
+            end. Nothing identifies you. Close the tab before finishing and nothing is stored
+            at all.
+          </span>
+        </div>
+
+        <label class="switch" style="margin-bottom:1.1rem">
+          <input type="checkbox" id="consentBox" />
+          <span>I've read the above and I'm happy to take part.</span>
+        </label>
+
+        <div class="btn-row">
+          <button class="btn btn--primary" id="startBtn" disabled>Start the test</button>
+          <button class="btn btn--ghost" id="simulateBtn">See a worked example →</button>
+        </div>
+        <p class="field__hint" style="margin-top:0.7rem">
+          The worked example runs a synthetic respondent through the same pipeline so you can
+          see the full report without doing 190 trials. It is labelled as simulated
+          everywhere it appears.
+        </p>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:1.5rem">
+      <div class="card__head">
+        <h3>What this deployment is doing</h3>
+        <span class="tag" id="versionTag">v—</span>
+      </div>
+      <div class="grid grid--4" id="metaGrid"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================== TASK ============= -->
+<section class="task" id="screen-task" hidden>
+  <div class="task__bar"><div class="task__fill" id="taskFill"></div></div>
+  <div class="task__cues">
+    <div class="cue cue--left" id="cueLeft"></div>
+    <div class="cue cue--right" id="cueRight"></div>
+  </div>
+  <div class="task__field">
+    <div class="stimulus" id="stimulus"></div>
+    <div class="feedback" id="feedback"></div>
+  </div>
+  <div class="task__foot">
+    <span id="taskProgress">—</span>
+    <span id="taskBlockLabel">—</span>
+    <span><kbd>E</kbd> left · <kbd>I</kbd> right · <kbd>Esc</kbd> to abandon</span>
+  </div>
+</section>
+<div class="overlay" id="overlay" hidden></div>
+
+<!-- ================================================== WORKING ========== -->
+<section class="stage" id="screen-working" hidden>
+  <div class="wrap" style="text-align:center; padding-top:4rem">
+    <div class="spinner"></div>
+    <h2 class="title">Scoring the session</h2>
+    <p style="color:var(--ink-mid)">This takes a few seconds — the interval is bootstrapped from your own trials.</p>
+    <div class="steps" id="workSteps"></div>
+  </div>
+</section>
+
+<!-- ================================================== RESULTS ========== -->
+<section class="stage" id="screen-results" hidden>
+  <div class="wrap">
+    <div id="resultBanners"></div>
+
+    <div class="grid grid--2" style="align-items:stretch">
+      <div class="verdict">
+        <span class="eyebrow" id="verdictStudy">—</span>
+        <div class="stat__label">D-score</div>
+        <div class="verdict__d" id="verdictD">—</div>
+        <div class="verdict__ci" id="verdictCI">—</div>
+
+        <div class="scale">
+          <div class="scale__track" id="scaleTrack">
+            <div class="scale__zero"></div>
+            <div class="scale__ci" id="scaleCI"></div>
+            <div class="scale__marker" id="scaleMarker"></div>
+          </div>
+          <div class="scale__ticks">
+            <span>−1.0</span><span>−0.65</span><span>−0.35</span><span>0</span><span>+0.35</span><span>+0.65</span><span>+1.0</span>
+          </div>
+        </div>
+
+        <p class="verdict__reading" id="verdictReading">—</p>
+        <p class="verdict__caveat" id="verdictCaveat"></p>
+      </div>
+
+      <div class="grid grid--2" id="headlineStats" style="align-content:start"></div>
+    </div>
+
+    <div class="card" style="margin-top:1rem">
+      <div class="card__head"><h3>Sensitivity to the scoring choice</h3></div>
+      <div class="scroll-x"><table class="data" id="sensTable"></table></div>
+      <p class="card__note">
+        The same trials scored under other defensible published procedures. If the
+        conclusion moves when the algorithm changes, that is a fact about the data, not a
+        footnote — so it is reported next to the headline rather than buried.
+      </p>
+    </div>
+
+    <div class="grid grid--2" style="margin-top:1rem; align-items:start">
+      <div class="card">
+        <div class="card__head"><h3>Where the time went</h3></div>
+        <div class="legend">
+          <span><i style="background:var(--con)"></i> <span id="legendCon">congruent</span></span>
+          <span><i style="background:var(--inc)"></i> <span id="legendInc">incongruent</span></span>
+        </div>
+        <div class="chart-box"><canvas id="chartDist"></canvas></div>
+        <p class="card__note">
+          Correct-trial latencies, 50 ms bins shared between the two conditions so the
+          bars are directly comparable. Reaction times are right-skewed — that long tail
+          is why the analysis uses resampling rather than a t-test.
+        </p>
+      </div>
+
+      <div class="card">
+        <div class="card__head"><h3>Trial by trial</h3></div>
+        <div class="chart-box"><canvas id="chartSeries"></canvas></div>
+        <p class="card__note">
+          Every scored trial in the order it was presented. Practice effects, fatigue and
+          the block boundaries are visible here and invisible in a mean.
+        </p>
+      </div>
+    </div>
+
+    <div class="grid grid--2" style="margin-top:1rem; align-items:start">
+      <div class="card">
+        <div class="card__head">
+          <h3>Is this distinguishable from chance?</h3>
+          <span class="tag tag--accent" id="pTag">—</span>
+        </div>
+        <div class="chart-box chart-box--short"><canvas id="chartNull"></canvas></div>
+        <p class="card__note" id="nullNote"></p>
+      </div>
+
+      <div class="card">
+        <div class="card__head"><h3>Block-level detail</h3></div>
+        <div class="scroll-x"><table class="data" id="blockTable"></table></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:1rem">
+      <div class="card__head">
+        <h3>Executive summary</h3>
+        <span class="tag" id="engineTag">—</span>
+        <span class="tag" id="verifyTag">—</span>
+      </div>
+      <div class="banner banner--info">
+        <span class="banner__icon">◆</span>
+        <span id="llmNote">
+          AI-generated from computed statistics — not human-reviewed. The model receives a
+          fixed block of numbers that Python has already computed and writes prose about
+          them. It never sees a raw latency and is never the source of a figure.
+        </span>
+      </div>
+      <div class="summary" id="summaryBody"></div>
+      <details class="disclosure" id="promptDisclosure">
+        <summary>View the exact prompt and the data the model was given</summary>
+        <div class="disclosure__body">
+          <p class="card__note" style="margin-top:0">
+            If a model writes part of a research report, the instructions it was given are
+            part of the method and belong in the audit trail.
+          </p>
+          <pre class="prompt" id="promptText"></pre>
+        </div>
+      </details>
+      <details class="disclosure" id="rejectedDisclosure" hidden>
+        <summary>⚠ The model's draft was rejected — see why</summary>
+        <div class="disclosure__body">
+          <p class="card__note" style="margin-top:0" id="rejectedWhy"></p>
+          <pre class="prompt" id="rejectedText"></pre>
+        </div>
+      </details>
+    </div>
+
+    <div class="grid grid--2" style="margin-top:1rem; align-items:start">
+      <div class="card">
+        <div class="card__head">
+          <h3>Data quality</h3>
+          <span class="tag" id="qualityTag">—</span>
+        </div>
+        <div class="checks" id="qualityChecks"></div>
+      </div>
+
+      <div>
+        <div class="card">
+          <div class="card__head"><h3>Measurement conditions</h3></div>
+          <div class="grid grid--2" id="timingStats"></div>
+          <p class="card__note" id="timingNote"></p>
+        </div>
+        <div class="card" style="margin-top:1rem">
+          <div class="card__head"><h3>Reproducibility</h3></div>
+          <div class="scroll-x"><table class="data" id="reproTable"></table></div>
+          <div class="btn-row" style="margin-top:1rem">
+            <a class="btn btn--sm" id="csvBtn" href="#">Download trial-level CSV</a>
+            <a class="btn btn--sm" id="jsonBtn" href="#">Download full session JSON</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:1rem" id="normsCard" hidden>
+      <div class="card__head">
+        <h3>Against everyone else who has taken this study</h3>
+        <span class="tag" id="normsTag">—</span>
+      </div>
+      <div class="chart-box chart-box--short"><canvas id="chartNorms"></canvas></div>
+      <p class="card__note" id="normsNote"></p>
+    </div>
+
+    <div class="btn-row" style="margin-top:2rem">
+      <button class="btn btn--primary" id="againBtn">Run another session</button>
+      <a class="btn btn--ghost" href="/method">How the scoring works →</a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="footer">
+  <div class="wrap footer__row">
+    <span>ImplicitLab — built by <a href="https://callan-jackson.github.io/" target="_blank" rel="noopener">Callan Jackson</a></span>
+    <span>Not affiliated with any brand named in a study. Demonstration software, not a clinical or diagnostic instrument.</span>
+  </div>
+</footer>
+
+<script type="module" src="/static/js/app.js"></script>
+</body>
+</html>
