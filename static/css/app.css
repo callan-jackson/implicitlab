@@ -83,14 +83,16 @@ kbd {
   max-width: var(--maxw); margin: 0 auto; padding: 0.85rem 1.5rem;
   display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
 }
-.brand { display: flex; align-items: center; gap: 0.6rem; font-family: var(--display); font-weight: 700; font-size: 1.05rem; letter-spacing: -0.02em; color: var(--ink); }
+.brand { display: flex; align-items: center; gap: 0.75rem; color: var(--ink); }
 .brand:hover { text-decoration: none; }
-.brand__mark {
-  width: 26px; height: 26px; border-radius: 7px; flex: none;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  display: grid; place-items: center; color: #0b0d12; font-size: 0.8rem; font-weight: 700;
+/* Sized by height so the intrinsic width/height attributes keep the aspect
+   ratio and the masthead reserves the right box before the image decodes. */
+.brand__logo { height: 30px; width: auto; display: block; flex: none; }
+.brand:hover .brand__logo { opacity: 0.88; }
+.brand__sub {
+  color: var(--ink-dim); font-weight: 400; font-size: 0.8rem; font-family: var(--sans);
+  padding-left: 0.8rem; border-left: 1px solid var(--line); line-height: 1.2;
 }
-.brand__sub { color: var(--ink-dim); font-weight: 400; font-size: 0.85rem; font-family: var(--sans); }
 .masthead__spacer { flex: 1; }
 .masthead__links { display: flex; gap: 1.25rem; font-size: 0.88rem; }
 .masthead__links a { color: var(--ink-mid); }
@@ -395,6 +397,8 @@ pre.prompt {
 }
 
 @media (max-width: 640px) {
+  .brand__sub { display: none; }
+  .brand__logo { height: 24px; }
   .task__cues { padding: 1rem 1.1rem 0; }
   .task__foot { padding: 0.8rem 1.1rem 1.1rem; flex-direction: column; gap: 0.3rem; }
   .overlay__map { flex-direction: column; gap: 0.8rem; }

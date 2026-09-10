@@ -89,7 +89,7 @@ def method() -> HTMLResponse:
 
 @app.get("/favicon.ico", include_in_schema=False)
 def favicon() -> FileResponse:
-    return FileResponse(STATIC_DIR / "assets" / "favicon.svg")
+    return FileResponse(STATIC_DIR / "assets" / "favicon-32.png")
 
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

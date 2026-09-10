@@ -115,8 +115,30 @@ app/
 static/
 ├── js/timing.js       onset measurement, refresh calibration, stall watchdog
 ├── js/engine.js       trial runner with forced error correction
-└── js/dashboard.js    Chart.js report
+├── js/dashboard.js    Chart.js report
+└── assets/            brand lockup, favicons, social card — all generated
+
+tools/
+└── make_logo_assets.py   derives every brand asset from one source lockup
 ```
+
+### Brand assets
+
+`static/assets/logo-source.png` is the single source of truth. Everything else
+in that directory is generated:
+
+```bash
+./.venv/bin/python tools/make_logo_assets.py static/assets/logo-source.png
+```
+
+The one non-obvious step is the dark-background variant. The wordmark is drawn
+in two materials — "Implicit" in near-black neutral ink and "Lab" in a
+blue-to-purple gradient — and on a dark UI the neutral half disappears. Splitting
+them by lightness would fail, because the deep end of the purple gradient is as
+dark as the ink; they are separated by **chroma** instead, which is near zero for
+neutral ink and large everywhere along the gradient, including through the
+antialiased edges. That lifts the ink without leaving a pale halo around the
+gradient glyphs.
 
 ## Running it
 
