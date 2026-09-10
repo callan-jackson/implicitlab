@@ -166,11 +166,11 @@ def _verdicts(inference: dict, result: dict, quality: dict) -> dict:
             "this session failed the data-quality criteria, so no association "
             "estimate is reported"
         )
-    elif excludes_zero is False or significant is False:
-        label = "not_distinguishable_from_zero"
+    elif excludes_zero is None or significant is None:
+        label = "inconclusive"
         plain = (
-            "this session did not produce an effect that can be told apart from "
-            "no effect"
+            "there were too few usable trials to test the estimate, so the result "
+            "is unresolved rather than either a finding or a null"
         )
     elif excludes_zero and significant:
         label = "distinguishable_from_zero"
@@ -178,11 +178,22 @@ def _verdicts(inference: dict, result: dict, quality: dict) -> dict:
             "for this participant on this occasion, the effect can be told apart "
             "from no effect"
         )
+    elif not excludes_zero and not significant:
+        label = "not_distinguishable_from_zero"
+        plain = (
+            "this session did not produce an effect that can be told apart from "
+            "no effect"
+        )
     else:
+        # The interval and the permutation test are answering slightly different
+        # questions and can land either side of the line when the effect is
+        # marginal. Reporting that as a clean null throws away the fact that the
+        # two criteria disagreed, which is itself the informative part.
         label = "inconclusive"
         plain = (
-            "the interval and the permutation test disagree, so the result is "
-            "unresolved rather than either a finding or a null"
+            "the confidence interval and the permutation test disagree, which "
+            "happens when an effect is marginal; the result is unresolved rather "
+            "than either a finding or a null"
         )
 
     return {

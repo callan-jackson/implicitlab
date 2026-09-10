@@ -262,8 +262,12 @@ async function submit(records, engine) {
       }),
     });
     timers.forEach(clearTimeout);
-    renderReport(report);
+    // Reveal before rendering. A canvas inside a display:none section has zero
+    // measured size, so a chart constructed there is built at 0x0 and only
+    // recovers if a ResizeObserver happens to fire afterwards. Showing first
+    // makes correct sizing deterministic rather than incidental.
     show('results');
+    renderReport(report);
   } catch (err) {
     timers.forEach(clearTimeout);
     alert(`Scoring failed: ${err.message}`);
@@ -295,8 +299,8 @@ async function runDemo() {
       }),
     });
     clearTimeout(t);
-    renderReport(report);
     show('results');
+    renderReport(report);
   } catch (err) {
     clearTimeout(t);
     alert(`Could not run the example: ${err.message}`);

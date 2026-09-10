@@ -133,10 +133,12 @@ engine with no configuration. To enable the model path, copy `.env.example` to
 ### Tests
 
 ```bash
-./.venv/bin/python -m pytest -q
+./run_tests.sh
 ```
 
-70 tests. The ones worth reading:
+78 tests — 68 in Python covering design, scoring, quality and the LLM
+guardrail, plus 10 in Node covering the browser trial engine, which is the one
+component Python cannot reach. The ones worth reading:
 
 - `test_dscore.py::test_d_matches_hand_computation` — reproduces a *D* worked
   out by hand, to ten decimal places.
@@ -153,6 +155,11 @@ engine with no configuration. To enable the model path, copy `.env.example` to
   which is exactly where a hallucinated figure sits.
 - `test_pipeline.py::test_recovers_a_planted_effect_on_average` — simulated
   respondents with a known *D* must be recovered by the scorer.
+- `engine.test.mjs` — the trial engine against a small hand-written DOM stub.
+  This caught a third real bug: aborting mid-trial left the engine awaiting a
+  keypress that would never arrive, so its global `keydown` listener was never
+  removed and a second session in the same page would have registered every key
+  twice.
 
 ## Deployment
 

@@ -1,0 +1,36 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install
+        run: pip install -r requirements-dev.txt
+
+      - name: Python tests
+        run: python -m pytest -q
+
+      - name: Trial engine tests
+        run: node --test tests/engine.test.mjs
+
+      - name: Scoring reproducibility under a different hash seed
+        # The design generator must produce byte-identical sessions from the
+        # same seed regardless of process hash randomisation.
+        run: PYTHONHASHSEED=31337 python -m pytest tests/test_reproducibility.py -q

@@ -38,6 +38,7 @@ export class TrialEngine {
     this.aborted = false;
     this.focusLosses = 0;
     this._resolveKey = null;
+    this._resolveOverlay = null;
 
     this._onKeyDown = this._onKeyDown.bind(this);
   }
@@ -54,6 +55,7 @@ export class TrialEngine {
   }
 
   _awaitKey(timeoutMs) {
+    if (this.aborted) return Promise.resolve(null);
     return new Promise((resolve) => {
       this._resolveKey = resolve;
       if (timeoutMs) {
@@ -101,6 +103,7 @@ export class TrialEngine {
         if (this.aborted) break;
         // eslint-disable-next-line no-await-in-loop
         const rec = await this._runTrial(trial, block);
+        if (rec === null) break;   // aborted mid-trial
         this.records.push(rec);
         done += 1;
         this.onProgress(done, total, block);
@@ -119,6 +122,11 @@ export class TrialEngine {
       this._resolveKey = null;
       r(null);
     }
+    if (this._resolveOverlay) {
+      const r = this._resolveOverlay;
+      this._resolveOverlay = null;
+      r();
+    }
   }
 
   _renderKeyMap(block) {
@@ -130,6 +138,7 @@ export class TrialEngine {
 
   _instructionScreen(block) {
     return new Promise((resolve) => {
+      this._resolveOverlay = resolve;
       const roleTag = block.role
         ? `<span class="tag tag--${block.role}">${block.role === 'test' ? 'Scored block' : block.role === 'practice' ? 'Scored practice' : 'Test block'}</span>`
         : '<span class="tag">Practice — not scored</span>';
@@ -153,6 +162,7 @@ export class TrialEngine {
 
       const go = () => {
         window.removeEventListener('keydown', onSpace, true);
+        this._resolveOverlay = null;
         this.dom.overlay.hidden = true;
         resolve();
       };
@@ -195,12 +205,14 @@ export class TrialEngine {
 
     const window_ms = block.response_window_ms || 0;
     const first = await this._awaitKey(window_ms || null);
+    if (this.aborted) return null;
 
     // --- No response inside the SC-IAT window ---------------------------
     if (!first) {
       this.dom.feedback.textContent = 'Respond faster';
       this.dom.feedback.className = 'feedback feedback--slow';
       const late = await this._awaitKey(null);
+      if (this.aborted) return null;
       await Timing.showAndTimestamp(() => { this.dom.stimulus.textContent = ''; });
       await sleep(ITI_MS);
       return this._record(trial, {
@@ -247,6 +259,7 @@ export class TrialEngine {
     while (!this.aborted) {
       // eslint-disable-next-line no-await-in-loop
       const next = await this._awaitKey(null);
+      if (this.aborted) return null;
       if (!next) break;
       corrections += 1;
       if (next.key === trial.correct_key) { corrected = next; break; }
