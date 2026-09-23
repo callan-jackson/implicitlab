@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Studio — ImplicitLab cohort analysis</title>
+<meta name="description" content="Cohort analysis for implicit association studies: batch ingestion, participant-level exclusions, segment comparisons with bootstrap intervals and FDR-corrected tests, and one-click Excel and PowerPoint deliverables." />
+<link rel="icon" href="/static/assets/favicon-32.png" sizes="32x32" type="image/png" />
+<link rel="icon" href="/static/assets/favicon-64.png" sizes="64x64" type="image/png" />
+<link rel="apple-touch-icon" href="/static/assets/favicon-180.png" />
+<meta name="theme-color" content="#08090c" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/static/css/app.css" />
+<script src="/static/vendor/chart.umd.min.js" defer></script>
+</head>
+<body class="studio-page">
+
+<header class="masthead">
+  <div class="masthead__inner">
+    <a class="brand" href="/" aria-label="ImplicitLab — home">
+      <img class="brand__logo" src="/static/assets/logo-dark.png"
+           alt="ImplicitLab" width="1685" height="602" />
+      <span class="brand__sub">cohort studio</span>
+    </a>
+    <div class="masthead__spacer"></div>
+    <nav class="masthead__links">
+      <a href="/">Run a test</a>
+      <a href="/studio" aria-current="page">Studio</a>
+      <a href="/method">Method</a>
+      <a href="/api/docs">API</a>
+      <a href="https://github.com/callan-jackson/implicitlab" target="_blank" rel="noopener">Code ↗</a>
+    </nav>
+  </div>
+</header>
+
+<main class="stage studio">
+<div class="wrap wrap--wide">
+
+  <!-- ============================================== batch header ======= -->
+  <section class="studio-head">
+    <div class="studio-head__title">
+      <span class="eyebrow">Cohort analysis</span>
+      <h1 class="title" id="batchTitle">Loading batch…</h1>
+      <p class="studio-head__note" id="batchNote"></p>
+    </div>
+    <div class="studio-head__actions">
+      <div class="field field--inline">
+        <label for="batchSelect">Batch</label>
+        <select id="batchSelect"></select>
+      </div>
+      <div class="btn-row">
+        <label class="btn btn--sm" for="uploadInput" id="uploadLabel">⇪ Upload batch (CSV / JSON)</label>
+        <input type="file" id="uploadInput" accept=".csv,.json,text/csv,application/json" hidden />
+        <a class="btn btn--sm btn--ghost" id="sampleLink" href="/api/cohort/sample.csv?n=150">Download sample CSV</a>
+        <a class="btn btn--sm btn--ghost" id="rawLink" href="#">Raw data (CSV)</a>
+      </div>
+    </div>
+  </section>
+
+  <div id="uploadStatus"></div>
+
+  <details class="disclosure" id="ingestDisclosure">
+    <summary>Ingest report — <span id="ingestSummary">—</span></summary>
+    <div class="disclosure__body" id="ingestBody"></div>
+  </details>
+
+  <!-- ============================================== controls ========== -->
+  <section class="controls" aria-label="Analysis parameters">
+    <div class="controls__head">
+      <h3>Analysis parameters</h3>
+      <span class="calc" id="calcStatus">—</span>
+      <button class="btn btn--sm btn--ghost" id="resetBtn" type="button">Reset to published defaults</button>
+      <a class="btn btn--sm btn--primary" id="xlsxBtn" href="#">↓ Excel workbook</a>
+      <a class="btn btn--sm btn--primary" id="pptxBtn" href="#">↓ PowerPoint deck</a>
+    </div>
+    <div class="controls__grid">
+      <div class="ctl">
+        <label for="lowerSlider">Lower trial trim <output id="lowerOut">off</output></label>
+        <input type="range" id="lowerSlider" min="0" max="1000" step="25" value="0" />
+        <p class="ctl__hint" id="lowerHint">Off — the Greenwald (2003) default.</p>
+      </div>
+      <div class="ctl">
+        <label for="upperSlider">Upper trial cut-off <output id="upperOut">10,000 ms</output></label>
+        <input type="range" id="upperSlider" min="2000" max="10000" step="250" value="10000" />
+        <p class="ctl__hint">Trials slower than this are dropped. Trial-level only.</p>
+      </div>
+      <div class="ctl">
+        <label for="fastSlider">Fast-responder screen <output id="fastOut">&gt;10% under 300 ms</output></label>
+        <div class="ctl__pair">
+          <input type="range" id="fastSlider" min="150" max="500" step="10" value="300" aria-label="Fast threshold (ms)" />
+          <input type="range" id="fastLimitSlider" min="1" max="40" step="1" value="10" aria-label="Fast-trial limit (%)" />
+        </div>
+        <p class="ctl__hint">Participant-level: excludes the whole respondent.</p>
+      </div>
+      <div class="ctl">
+        <label for="accSlider">Minimum accuracy <output id="accOut">75%</output></label>
+        <input type="range" id="accSlider" min="50" max="95" step="1" value="75" />
+        <p class="ctl__hint">Participant-level, on the combined blocks.</p>
+      </div>
+      <div class="ctl">
+        <label for="segmentSelect">Segment by</label>
+        <select id="segmentSelect"></select>
+        <p class="ctl__hint" id="segmentNote"></p>
+      </div>
+      <div class="ctl">
+        <span class="ctl__label">Statistical method</span>
+        <div class="seg" role="radiogroup" aria-label="Statistical method">
+          <button type="button" class="seg__btn seg__btn--on" data-method="permutation" role="radio" aria-checked="true">Permutation</button>
+          <button type="button" class="seg__btn" data-method="parametric" role="radio" aria-checked="false">Parametric</button>
+        </div>
+        <p class="ctl__hint" id="methodHint">Distribution-free tests on D.</p>
+      </div>
+    </div>
+  </section>
+
+  <div id="errorBox"></div>
+
+  <!-- ============================================== KPIs ============== -->
+  <section class="kpis" id="kpis"></section>
+
+  <!-- ============================================== funnel + takeaways -->
+  <div class="grid studio-grid-2">
+    <div class="card">
+      <div class="card__head"><h3>Sample funnel</h3><span class="tag" id="funnelTag">—</span></div>
+      <div class="funnel" id="funnel"></div>
+      <p class="card__note">
+        Each respondent is counted at the first rule they fail. Participant-level screens run on
+        the untrimmed trials, so moving the trim slider cannot hide a fast responder.
+      </p>
+    </div>
+    <div class="card">
+      <div class="card__head">
+        <h3>Executive takeaways</h3>
+        <span class="tag tag--accent" id="takeawayTag">permutation</span>
+      </div>
+      <ol class="takeaways" id="takeaways"></ol>
+      <p class="card__note">
+        Written by rules from the computed statistics — no model in the loop for client
+        deliverables. The deck and workbook carry these exact sentences.
+      </p>
+    </div>
+  </div>
+
+  <!-- ============================================== heatmap =========== -->
+  <div class="card studio-block">
+    <div class="card__head">
+      <h3>Association strength by attribute and segment</h3>
+      <span class="tag" id="heatTag">—</span>
+    </div>
+    <div class="heat-legend" id="heatLegend"></div>
+    <div class="scroll-x"><div class="heat" id="heatmap"></div></div>
+    <p class="card__note">
+      Cell = mean D across respondents in that group. ● significant at q &lt; .05 (Benjamini–Hochberg,
+      selected method) · ○ not significant · <span class="lowbase-key">dashed</span> = low base (n &lt; 30), indicative only.
+      Hover a cell for the interval and both methods' p- and q-values.
+    </p>
+  </div>
+
+  <!-- ============================================== forest ============ -->
+  <div class="card studio-block">
+    <div class="card__head">
+      <h3>Effect sizes with 95% bootstrap intervals</h3>
+      <span class="tag" id="forestTag">—</span>
+    </div>
+    <div class="legend" id="forestLegend"></div>
+    <div class="chart-box" id="forestBox"><canvas id="chartForest"></canvas></div>
+    <p class="card__note">
+      Mean D per group with a percentile-bootstrap interval over participants (2,000 resamples).
+      Filled point = significant under the selected method; hollow = not. An interval crossing zero is
+      not a finding, whatever its point estimate.
+    </p>
+  </div>
+
+  <!-- ============================================== distribution + comps -->
+  <div class="grid studio-grid-2">
+    <div class="card">
+      <div class="card__head">
+        <h3>Reaction-time distributions</h3>
+        <div class="masthead__spacer"></div>
+        <select id="distAttr" class="select--sm" aria-label="Attribute"></select>
+        <div class="seg seg--sm" role="radiogroup" aria-label="Scale">
+          <button type="button" class="seg__btn seg__btn--on" data-scale="raw">Raw ms</button>
+          <button type="button" class="seg__btn" data-scale="log">Log RT</button>
+        </div>
+      </div>
+      <div class="legend" id="distLegend"></div>
+      <div class="chart-box"><canvas id="chartDist"></canvas></div>
+      <div class="shape" id="distShape"></div>
+      <p class="card__note" id="distNote"></p>
+    </div>
+    <div class="card">
+      <div class="card__head"><h3>Respondent-level spread of D</h3></div>
+      <div class="multiples" id="dHists"></div>
+      <p class="card__note">
+        One D per respondent. A mean can hide a split audience; the shape of these does not.
+        Blue bins lean to the first brand, orange to the second.
+      </p>
+    </div>
+  </div>
+
+  <div class="card studio-block">
+    <div class="card__head">
+      <h3>Segment comparisons</h3>
+      <span class="tag" id="cmpTag">—</span>
+    </div>
+    <div class="scroll-x"><table class="data data--cmp" id="cmpTable"></table></div>
+    <p class="card__note" id="cmpNote"></p>
+  </div>
+
+  <!-- ============================================== audit ============= -->
+  <details class="disclosure studio-block" id="auditDisclosure">
+    <summary>Audit — participant-level screening <span class="tag" id="auditTag">open to load</span></summary>
+    <div class="disclosure__body">
+      <div class="audit-bar">
+        <div class="field field--inline">
+          <label for="auditFilter">Show</label>
+          <select id="auditFilter">
+            <option value="all">All participants</option>
+            <option value="included">Included only</option>
+            <option value="excluded">Excluded only</option>
+          </select>
+        </div>
+        <div class="audit-counts" id="auditCounts"></div>
+      </div>
+      <div class="scroll-x audit-scroll"><table class="data data--audit" id="auditTable"></table></div>
+    </div>
+  </details>
+
+  <div class="card studio-block method-note">
+    <div class="card__head"><h3>Method</h3></div>
+    <dl class="method-list" id="methodNote"></dl>
+  </div>
+
+</div>
+</main>
+
+<div class="tip" id="tip" hidden></div>
+
+<footer class="footer">
+  <div class="wrap footer__row">
+    <span>ImplicitLab — built by <a href="https://callan-jackson.github.io/" target="_blank" rel="noopener">Callan Jackson</a></span>
+    <span>The demonstration panel is synthetic and the brands are invented. Not affiliated with any brand named in a study.</span>
+  </div>
+</footer>
+
+<script type="module" src="/static/js/studio.js"></script>
+</body>
+</html>
