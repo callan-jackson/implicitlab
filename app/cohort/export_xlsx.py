@@ -417,30 +417,47 @@ def _col_xml(s: pd.Series) -> pd.Series:
     return txt.map(rendered).to_numpy()
 
 
-def _raw_rows_xml(df: pd.DataFrame) -> str:
+RAW_CHUNK = 5000
+
+
+def _raw_rows_xml(df: pd.DataFrame, start_row: int = 2) -> str:
     parts = [_col_xml(df[c]) for c in df.columns]
     body = parts[0].astype(object)
     for p in parts[1:]:
         body = body + p
-    idx = np.arange(2, len(df) + 2).astype(str)
+    idx = np.arange(start_row, start_row + len(df)).astype(str)
     rows = '<row r="' + idx.astype(object) + '">' + body + "</row>"
     return "".join(rows.tolist())
 
 
-def _inject_raw(xlsx: bytes, sheet_index: int, rows_xml: str, ref: str) -> bytes:
+def _inject_raw(xlsx: bytes, sheet_index: int, raw: pd.DataFrame, ref: str) -> bytes:
+    """Stream the raw rows into the placeholder sheet, one chunk at a time.
+
+    Rendering all 175k rows as one string holds several million Python string
+    objects at once — over a gigabyte, which is more than a free-tier instance
+    has. Written straight into the zip entry in 5,000-row chunks, peak memory
+    is bounded by the chunk, not the batch.
+    """
     src = zipfile.ZipFile(io.BytesIO(xlsx))
     target = f"xl/worksheets/sheet{sheet_index}.xml"
     out = io.BytesIO()
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED, compresslevel=5) as dst:
         for item in src.infolist():
             data = src.read(item.filename)
-            if item.filename == target:
-                xml = data.decode("utf-8")
-                end = xml.index("</sheetData>")
-                xml = xml[:end] + rows_xml + xml[end:]
-                xml = re.sub(r'<dimension ref="[^"]*"', f'<dimension ref="{ref}"', xml, count=1)
-                data = xml.encode("utf-8")
-            dst.writestr(item, data)
+            if item.filename != target:
+                dst.writestr(item, data)
+                continue
+            xml = data.decode("utf-8")
+            xml = re.sub(r'<dimension ref="[^"]*"', f'<dimension ref="{ref}"', xml, count=1)
+            end = xml.index("</sheetData>")
+            info = zipfile.ZipInfo(item.filename, date_time=item.date_time)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            with dst.open(info, "w", force_zip64=True) as fh:
+                fh.write(xml[:end].encode("utf-8"))
+                for start in range(0, len(raw), RAW_CHUNK):
+                    chunk = raw.iloc[start:start + RAW_CHUNK]
+                    fh.write(_raw_rows_xml(chunk, start_row=start + 2).encode("utf-8"))
+                fh.write(xml[end:].encode("utf-8"))
     return out.getvalue()
 
 
@@ -478,4 +495,4 @@ def build_workbook(batch, params: CohortParams, *, segment_by: str | None = None
     buf = io.BytesIO()
     wb.save(buf)
     ref = f"A1:{get_column_letter(len(raw_cols))}{len(raw) + 1}"
-    return _inject_raw(buf.getvalue(), SHEETS.index(RAW_SHEET) + 1, _raw_rows_xml(raw), ref)
+    return _inject_raw(buf.getvalue(), SHEETS.index(RAW_SHEET) + 1, raw, ref)

@@ -50,6 +50,11 @@ LOW_BASE = 30
 
 BASE_SEED = 20260923
 
+#: Resamples are drawn in blocks of this many rows. A 5,000 × 450 matrix of
+#: draws is ~18 MB, and a bootstrap gather triples that; in blocks the peak is
+#: a few MB, which matters on a 512 MB instance serving several requests.
+BLOCK = 500
+
 
 def rng_for(*parts: object) -> np.random.Generator:
     """A generator seeded from a stable hash of ``parts``.
@@ -68,14 +73,20 @@ def rng_for(*parts: object) -> np.random.Generator:
 # --------------------------------------------------------------------------
 
 
+def _blocks(total: int):
+    for start in range(0, total, BLOCK):
+        yield min(BLOCK, total - start)
+
+
 def bootstrap_mean_ci(X: np.ndarray, rng: np.random.Generator, *, level: float = 0.95,
                       n_boot: int = N_BOOT) -> tuple[np.ndarray, np.ndarray]:
     n = X.shape[0]
     if n < 2:
         nan = np.full(X.shape[1], np.nan)
         return nan, nan
-    idx = rng.integers(0, n, size=(n_boot, n))
-    means = X[idx].mean(axis=1)
+    means = np.concatenate([
+        X[rng.integers(0, n, size=(b, n))].mean(axis=1) for b in _blocks(n_boot)
+    ])
     a = (1 - level) / 2 * 100
     lo, hi = np.percentile(means, [a, 100 - a], axis=0)
     return lo, hi
@@ -86,10 +97,11 @@ def signflip_p(X: np.ndarray, rng: np.random.Generator, *, n_perm: int = N_PERM)
     n = X.shape[0]
     if n < 2:
         return np.full(X.shape[1], np.nan)
-    signs = rng.choice(np.array([-1.0, 1.0]), size=(n_perm, n))
-    null = signs @ X / n
     obs = np.abs(X.mean(axis=0))
-    extreme = (np.abs(null) >= obs - 1e-12).sum(axis=0)
+    extreme = np.zeros(X.shape[1])
+    for b in _blocks(n_perm):
+        signs = rng.choice(np.array([-1.0, 1.0]), size=(b, n))
+        extreme += (np.abs(signs @ X / n) >= obs - 1e-12).sum(axis=0)
     return (extreme + 1) / (n_perm + 1)
 
 
@@ -102,12 +114,14 @@ def perm_diff_p(Xa: np.ndarray, Xb: np.ndarray, rng: np.random.Generator,
     pooled = np.vstack([Xa, Xb])
     base = np.zeros(na + nb)
     base[:na] = 1.0
-    masks = rng.permuted(np.tile(base, (n_perm, 1)), axis=1)
-    sum_a = masks @ pooled
     total = pooled.sum(axis=0)
-    null = sum_a / na - (total - sum_a) / nb
     obs = np.abs(Xa.mean(axis=0) - Xb.mean(axis=0))
-    extreme = (np.abs(null) >= obs - 1e-12).sum(axis=0)
+    extreme = np.zeros(Xa.shape[1])
+    for b in _blocks(n_perm):
+        masks = rng.permuted(np.tile(base, (b, 1)), axis=1)
+        sum_a = masks @ pooled
+        null = sum_a / na - (total - sum_a) / nb
+        extreme += (np.abs(null) >= obs - 1e-12).sum(axis=0)
     return (extreme + 1) / (n_perm + 1)
 
 
@@ -117,9 +131,11 @@ def bootstrap_diff_ci(Xa: np.ndarray, Xb: np.ndarray, rng: np.random.Generator,
     if na < 2 or nb < 2:
         nan = np.full(Xa.shape[1], np.nan)
         return nan, nan
-    ia = rng.integers(0, na, size=(n_boot, na))
-    ib = rng.integers(0, nb, size=(n_boot, nb))
-    diffs = Xa[ia].mean(axis=1) - Xb[ib].mean(axis=1)
+    diffs = np.concatenate([
+        Xa[rng.integers(0, na, size=(b, na))].mean(axis=1)
+        - Xb[rng.integers(0, nb, size=(b, nb))].mean(axis=1)
+        for b in _blocks(n_boot)
+    ])
     a = (1 - level) / 2 * 100
     lo, hi = np.percentile(diffs, [a, 100 - a], axis=0)
     return lo, hi
