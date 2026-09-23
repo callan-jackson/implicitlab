@@ -7,17 +7,18 @@ someone else's network.
 
 from __future__ import annotations
 
-import logging
-from pathlib import Path
-
 import hashlib
+import logging
 import re
+import threading
+from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from .api import router
+from .api import cohort_registry, cohort_router, router
 from .config import get_settings
 
 logging.basicConfig(
@@ -28,7 +29,20 @@ logging.basicConfig(
 settings = get_settings()
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    """Build the demonstration panel in the background at boot.
+
+    It takes a second or two. Doing it here means the first person to open the
+    Studio gets a dashboard, not a spinner — and on a free host that has just
+    woken from sleep, that first person is usually the one who matters.
+    """
+    threading.Thread(target=lambda: cohort_registry.get("demo"), daemon=True).start()
+    yield
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title="ImplicitLab",
     version=settings.version,
     description=(
@@ -42,6 +56,7 @@ app = FastAPI(
 )
 
 app.include_router(router)
+app.include_router(cohort_router)
 
 
 # The HTML shell must never be cached: it is what points at the versioned asset
@@ -80,6 +95,11 @@ def _render(name: str) -> HTMLResponse:
 @app.get("/", include_in_schema=False)
 def index() -> HTMLResponse:
     return _render("index.html")
+
+
+@app.get("/studio", include_in_schema=False)
+def studio() -> HTMLResponse:
+    return _render("studio.html")
 
 
 @app.get("/method", include_in_schema=False)

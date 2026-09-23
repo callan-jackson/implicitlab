@@ -17,6 +17,7 @@ from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from .analysis import analyse
+from .cohort.api import build_router as build_cohort_router
 from .config import get_settings
 from .design import DIMENSIONS, PRESETS, STUDIES, build_session, custom_study
 from .llm.client import InsightAgent
@@ -27,6 +28,7 @@ router = APIRouter(prefix="/api")
 settings = get_settings()
 store = Store(settings.database_path)
 agent = InsightAgent(settings)
+cohort_router, cohort_registry = build_cohort_router(store)
 
 
 # --------------------------------------------------------------------------

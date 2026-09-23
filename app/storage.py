@@ -70,6 +70,22 @@ CREATE TABLE IF NOT EXISTS designs (
     consumed        INTEGER NOT NULL DEFAULT 0
 );
 
+-- Cohort batches. The trial table is stored as the gzip'd canonical CSV the
+-- ingester produces: one blob per batch keeps an upload atomic, and the CSV is
+-- the same format the batch can be downloaded in, so what is stored is exactly
+-- what can be audited.
+CREATE TABLE IF NOT EXISTS batches (
+    id              TEXT PRIMARY KEY,
+    created_at      TEXT NOT NULL,
+    name            TEXT NOT NULL,
+    source          TEXT NOT NULL,
+    n_participants  INTEGER NOT NULL,
+    n_rows          INTEGER NOT NULL,
+    meta_json       TEXT NOT NULL,
+    report_json     TEXT NOT NULL,
+    data            BLOB NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_sessions_study ON sessions(study_id);
 CREATE INDEX IF NOT EXISTS idx_trials_session ON trials(session_id);
 """
@@ -224,6 +240,49 @@ class Store:
                 """SELECT id, created_at, study_name, instrument, preset, d, excluded, n_trials
                    FROM sessions ORDER BY created_at DESC LIMIT ?""",
                 (limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    # -- cohort batches ----------------------------------------------------
+
+    def put_batch(self, *, name: str, source: str, n_participants: int, n_rows: int,
+                  meta: dict, report: dict, data: bytes, keep_latest: int = 25) -> str:
+        """Store an ingested batch; prune the oldest beyond ``keep_latest``.
+
+        The pruning is there because this is a public demo with an upload
+        button. A real deployment would put batches in object storage behind
+        authentication and keep them for the contract's retention period.
+        """
+        bid = uuid.uuid4().hex[:10]
+        with self._conn() as c:
+            c.execute(
+                "INSERT INTO batches (id, created_at, name, source, n_participants, n_rows, "
+                "meta_json, report_json, data) VALUES (?,?,?,?,?,?,?,?,?)",
+                (bid, datetime.now(timezone.utc).isoformat(), name, source,
+                 n_participants, n_rows, json.dumps(meta), json.dumps(report), data),
+            )
+            c.execute(
+                "DELETE FROM batches WHERE id NOT IN "
+                "(SELECT id FROM batches ORDER BY created_at DESC LIMIT ?)",
+                (keep_latest,),
+            )
+        return bid
+
+    def get_batch(self, batch_id: str) -> dict | None:
+        with self._conn() as c:
+            row = c.execute("SELECT * FROM batches WHERE id = ?", (batch_id,)).fetchone()
+        if row is None:
+            return None
+        out = dict(row)
+        out["meta"] = json.loads(out.pop("meta_json"))
+        out["report"] = json.loads(out.pop("report_json"))
+        return out
+
+    def list_batches(self, limit: int = 25) -> list[dict]:
+        with self._conn() as c:
+            rows = c.execute(
+                "SELECT id, created_at, name, source, n_participants, n_rows FROM batches "
+                "ORDER BY created_at DESC LIMIT ?", (limit,),
             ).fetchall()
         return [dict(r) for r in rows]
 

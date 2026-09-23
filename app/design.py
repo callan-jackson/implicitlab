@@ -79,6 +79,11 @@ EVERYDAY_WORDS = [
 TRUST_WORDS = ["Reliable", "Honest", "Safe", "Dependable", "Straightforward", "Solid"]
 RISK_WORDS = ["Unreliable", "Shady", "Risky", "Erratic", "Confusing", "Flimsy"]
 
+# Sustainability claims are where stated and implicit measures diverge most
+# sharply: nobody tells an interviewer they do not care about packaging waste.
+ECO_WORDS = ["Sustainable", "Natural", "Renewable", "Responsible", "Green", "Recyclable"]
+WASTEFUL_WORDS = ["Wasteful", "Polluting", "Disposable", "Excessive", "Plastic", "Harmful"]
+
 
 @dataclass(slots=True)
 class Category:
@@ -136,6 +141,11 @@ DIMENSIONS: dict[str, AttributeDimension] = {
         key="trust", name="Trustworthy vs Risky",
         pole_a=Category("positive", "Trustworthy", TRUST_WORDS, ATTRIBUTE_COLOUR),
         pole_b=Category("negative", "Risky", RISK_WORDS, ATTRIBUTE_COLOUR),
+    ),
+    "eco": AttributeDimension(
+        key="eco", name="Eco-friendly vs Wasteful",
+        pole_a=Category("positive", "Eco-friendly", ECO_WORDS, ATTRIBUTE_COLOUR),
+        pole_b=Category("negative", "Wasteful", WASTEFUL_WORDS, ATTRIBUTE_COLOUR),
     ),
 }
 

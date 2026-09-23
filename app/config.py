@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     app_name: str = "ImplicitLab"
-    version: str = "1.0.0"
+    version: str = "1.1.0"
     environment: str = "development"
 
     # --- Azure OpenAI -----------------------------------------------------
