@@ -500,7 +500,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); margin: 0.2rem 0; 
 .seg--sm .seg__btn { padding: 0.3rem 0.6rem; font-size: 0.76rem; }
 .select--sm { width: auto; padding: 0.3rem 0.55rem; font-size: 0.8rem; }
 
-.calc { font-family: var(--mono); font-size: 0.74rem; color: var(--ink-dim); flex: 1 1 180px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.calc { font-family: var(--mono); font-size: 0.74rem; color: var(--ink-dim); flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .calc--busy { color: var(--accent); }
 .calc--busy::before { content: '● '; animation: pulse 0.9s ease-in-out infinite; }
 .calc--ok::before { content: '✓ '; color: var(--good); }

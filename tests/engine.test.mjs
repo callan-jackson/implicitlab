@@ -356,3 +356,25 @@ test('the keydown listener is removed when the session ends', async () => {
   const after = (win._listeners.keydown || []).length;
   assert.equal(after, before, 'a finished session must not leave a global key handler behind');
 });
+
+test('calibration blocks are labelled for participants, never with their internal index', async () => {
+  const session = design({ nTrials: 2 });
+  // Calibration runs before B1 and carries negative indices internally.
+  session.blocks.unshift(
+    { ...session.blocks[0], index: -2, kind: 'motor', role: null, pairing: null },
+    { ...session.blocks[0], index: -1, kind: 'reading', role: null, pairing: null },
+  );
+  const dom = makeDom();
+  const engine = new TrialEngine(session, dom, {});
+  const shown = [];
+  for (const block of session.blocks) {
+    const done = engine._instructionScreen(block);
+    shown.push(dom.overlay.innerHTML);
+    engine._resolveOverlay();
+    await done;
+  }
+  assert.match(shown[0], /Calibration 1 of 2/);
+  assert.match(shown[1], /Calibration 2 of 2/);
+  assert.match(shown[2], /Block 1 of 1/);
+  for (const html of shown) assert.doesNotMatch(html, /[Bb]lock -\d/);
+});

@@ -257,7 +257,7 @@ engine with no configuration. To enable the model path, copy `.env.example` to
 ./run_tests.sh
 ```
 
-115 tests — Python covering design, scoring, quality, the LLM
+117 tests — Python covering design, scoring, quality, the LLM
 guardrail, the cohort pipeline and the exports, plus 10 in Node covering the
 browser trial engine, which is the one component Python cannot reach. The ones
 worth reading:

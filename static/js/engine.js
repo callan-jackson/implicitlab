@@ -139,13 +139,23 @@ export class TrialEngine {
   _instructionScreen(block) {
     return new Promise((resolve) => {
       this._resolveOverlay = resolve;
+      // Calibration blocks carry negative indices internally (they run before
+      // B1 and feed no part of D). Participants see them numbered separately,
+      // and the task blocks numbered 1..n, never "Block -2 of 9".
+      const calibration = this.session.blocks.filter((b) => b.kind === 'motor' || b.kind === 'reading');
+      const isCal = block.kind === 'motor' || block.kind === 'reading';
+      const nTask = this.session.blocks.length - calibration.length;
+      const heading = isCal
+        ? `Calibration ${calibration.indexOf(block) + 1} of ${calibration.length}`
+        : `Block ${block.index} of ${nTask}`;
+      const goLabel = isCal ? 'Start calibration' : `Start block ${block.index}`;
       const roleTag = block.role
         ? `<span class="tag tag--${block.role}">${block.role === 'test' ? 'Scored block' : block.role === 'practice' ? 'Scored practice' : 'Test block'}</span>`
-        : '<span class="tag">Practice — not scored</span>';
+        : `<span class="tag">${isCal ? 'Calibration' : 'Practice'} — not scored</span>`;
       this.dom.overlay.innerHTML = `
         <div class="overlay__card">
           <div class="overlay__head">
-            <span class="overlay__block">Block ${block.index} of ${this.session.blocks.length}</span>
+            <span class="overlay__block">${heading}</span>
             ${roleTag}
           </div>
           <p class="overlay__text">${block.instruction}</p>
@@ -155,7 +165,7 @@ export class TrialEngine {
           </div>
           ${block.response_window_ms ? `<p class="overlay__note">Respond within ${block.response_window_ms} ms. The prompt will tell you if you are too slow.</p>` : ''}
           <p class="overlay__note">${block.n_trials} trials. Mistakes show a red ✗ — correct them to continue.</p>
-          <button class="btn btn--primary" id="blockGo">Start block ${block.index} &nbsp;→</button>
+          <button class="btn btn--primary" id="blockGo">${goLabel} &nbsp;→</button>
           <p class="overlay__hint">or press <kbd>Space</kbd></p>
         </div>`;
       this.dom.overlay.hidden = false;

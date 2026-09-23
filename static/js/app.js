@@ -211,6 +211,9 @@ async function runTask(design) {
 
   const records = await engine.run();
   window.removeEventListener('keydown', onEsc, true);
+  // A session abandoned earlier can finish unwinding after a new one has
+  // started; it must not reset the screen out from under the live session.
+  if (state.engine !== engine) return;
   if (engine.aborted) { show('setup'); $('startBtn').disabled = false; return; }
 
   await submit(records, engine);

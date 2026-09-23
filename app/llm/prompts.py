@@ -350,7 +350,19 @@ def fallback_summary(payload: dict) -> str:
     mag = score.get("magnitude_label", "")
 
     lines.append("### Headline")
-    if not solid:
+    level = int(inf.get("confidence_level", 0.95) * 100)
+    if not solid and (significant or not ci_spans_zero) and p is not None:
+        # The interval and the permutation test landed either side of the line.
+        # Calling that a clean null would contradict the interval printed in the
+        # same sentence; calling it a finding would overrule the other test.
+        lines.append(
+            f"The evidence for this session is marginal: the {level}% CI "
+            f"[{ci[0]:+.3f}, {ci[1]:+.3f}] "
+            f"{'excludes' if not ci_spans_zero else 'includes'} zero but the permutation "
+            f"test gives p = {p:.3f}, so the two criteria disagree. The lean toward "
+            f"{favoured} (D = {d:+.3f}) is unresolved rather than either a finding or a null."
+        )
+    elif not solid:
         lines.append(
             f"This session did not produce an association effect distinguishable from zero "
             f"(D = {d:+.3f}, {int(inf.get('confidence_level', 0.95) * 100)}% CI "

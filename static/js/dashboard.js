@@ -150,7 +150,13 @@ function renderVerdict(report) {
     $('verdictCI').textContent = 'Too few trials for an interval.';
   }
 
-  $('verdictReading').textContent = s.interpretation || '';
+  // When the interval spans zero the direction is a point estimate, not a
+  // finding, and the sentence under the number has to say so too.
+  const spansZero = inf.ci_low != null && inf.ci_low <= 0 && inf.ci_high >= 0;
+  const disagree = !spansZero && inf.p_permutation != null && inf.p_permutation >= 0.05;
+  const hedge = s.d == null ? '' : spansZero ? 'Point estimate only — '
+    : disagree ? 'Marginal: the interval excludes zero but the permutation test does not reach p < .05 — ' : '';
+  $('verdictReading').textContent = hedge + (s.interpretation || '');
   $('verdictCaveat').textContent = report.single_session_note || '';
 
   // Position the marker and the interval on a −1…+1 scale.
@@ -557,22 +563,35 @@ function renderSummary(report) {
 
   const engine = $('engineTag');
   engine.textContent = ins.engine;
-  engine.className = `tag ${ins.engine === 'azure-openai' ? 'tag--accent' : 'tag--warn'}`;
+  engine.className = `tag ${ins.engine === 'azure-openai' ? 'tag--accent' : ''}`;
 
   const v = ins.verification || {};
+  const byModel = ins.engine === 'azure-openai';
   const verify = $('verifyTag');
-  verify.textContent = v.verified
-    ? `${v.numbers_checked} figures verified`
-    : `${(v.unverified_numbers || []).length} figures unverified`;
-  verify.className = `tag ${v.verified ? 'tag--good' : 'tag--bad'}`;
+  if (byModel) {
+    verify.hidden = false;
+    verify.textContent = v.verified
+      ? `${v.numbers_checked} figures verified`
+      : `${(v.unverified_numbers || []).length} figures unverified`;
+    verify.className = `tag ${v.verified ? 'tag--good' : 'tag--bad'}`;
+  } else {
+    // The rules engine copies figures straight from the statistics, so there
+    // is nothing for the numeric verifier to catch; a "0 figures verified"
+    // badge next to it would read as a failure.
+    verify.hidden = true;
+  }
 
   $('summaryBody').innerHTML = markdown(ins.summary_markdown || '');
 
   const notes = (ins.notes || []).join(' ');
-  $('llmNote').innerHTML =
-    'AI-generated from computed statistics — not human-reviewed. The model receives a fixed '
-    + 'block of numbers that Python has already computed and writes prose about them. It never '
-    + 'sees a raw latency and is never the source of a figure. '
+  $('llmNote').innerHTML = (byModel
+    ? 'AI-generated from computed statistics — not human-reviewed. The model receives a fixed '
+      + 'block of numbers that Python has already computed and writes prose about them. It never '
+      + 'sees a raw latency and is never the source of a figure, and every number it writes is '
+      + 'checked against the statistics before it is shown. '
+    : 'Written by the deterministic rules engine from the computed statistics. When a language '
+      + 'model is configured it writes this section instead, from the same numbers, and every figure '
+      + 'it emits is verified against them; this deployment is running without one. ')
     + (notes ? `<br /><strong>${escapeHtml(notes)}</strong>` : '');
 
   const p = ins.prompt_shown || {};

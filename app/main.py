@@ -112,4 +112,21 @@ def favicon() -> FileResponse:
     return FileResponse(STATIC_DIR / "assets" / "favicon-32.png")
 
 
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+class _RevalidatingStatic(StaticFiles):
+    """Static files, with scripts always revalidated.
+
+    The HTML pins its own asset URLs to the build stamp, but ES modules pull
+    their siblings in by relative ``import``, which no stamp reaches. Without
+    this, a browser can run last week's dashboard.js against this week's API.
+    ``no-cache`` still lets the browser keep the file; it just has to confirm
+    with a cheap conditional request (304) that it is current.
+    """
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        if path.endswith(".js"):
+            response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
+app.mount("/static", _RevalidatingStatic(directory=STATIC_DIR), name="static")

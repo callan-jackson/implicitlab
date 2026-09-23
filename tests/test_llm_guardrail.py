@@ -145,3 +145,16 @@ def test_no_exclamation_marks_or_marketing_language_in_the_fallback():
     assert "!" not in text
     for word in ("amazing", "incredible", "revolutionary", "unlock", "really thinks"):
         assert word not in text.lower()
+
+
+def test_deterministic_summary_calls_disagreeing_criteria_marginal_not_null():
+    # Regression, found in a user test: a CI that excluded zero with p = .06
+    # produced "not distinguishable from zero" beside the interval that said
+    # otherwise. Disagreement is its own verdict.
+    payload = {**PAYLOAD}
+    payload["inference"] = {**PAYLOAD["inference"], "confidence_interval": [0.036, 0.928],
+                            "p_permutation": 0.061}
+    headline = fallback_summary(payload).split("###")[1]
+    assert "marginal" in headline and "excludes zero" in headline
+    assert "not produce an association effect distinguishable" not in headline
+    assert verify(fallback_summary(payload), payload).verified
