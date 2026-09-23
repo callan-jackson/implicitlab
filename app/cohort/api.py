@@ -10,6 +10,8 @@ that cannot say which exclusion rules produced it cannot be defended.
 from __future__ import annotations
 
 import re
+import threading
+from collections import OrderedDict
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -26,10 +28,41 @@ MAX_UPLOAD_BYTES = 60 * 1024 * 1024
 
 PARAM_KEYS = ("lower_ms", "upper_ms", "fast_ms", "fast_limit", "min_accuracy", "min_trials")
 
+#: Memoised reports. The analysis is a pure function of (batch, parameters,
+#: segmentation), so a slider dragged back to a value it has visited, or a
+#: second viewer on the default view, costs nothing. On a free-tier CPU slice
+#: that is the difference between instant and several seconds.
+ANALYSIS_CACHE_SIZE = 96
+
 
 def build_router(store: Store) -> tuple[APIRouter, Registry]:
     router = APIRouter(prefix="/api/cohort", tags=["cohort"])
     registry = Registry(store)
+    cache: OrderedDict[tuple, dict] = OrderedDict()
+    cache_lock = threading.Lock()
+
+    def cached_analysis(b, params: CohortParams, segment_by: str | None) -> dict:
+        key = (b.id, params, segment_by)
+        with cache_lock:
+            hit = cache.get(key)
+            if hit is not None:
+                cache.move_to_end(key)
+                return hit
+        report = analyse_cohort(b.prep, b.meta, params, segment_by=segment_by)
+        report["batch"]["id"] = b.id
+        with cache_lock:
+            cache[key] = report
+            while len(cache) > ANALYSIS_CACHE_SIZE:
+                cache.popitem(last=False)
+        return report
+
+    def prewarm() -> None:
+        """Load the demo panel and compute its default view for every segment."""
+        demo = registry.get(DEMO_ID)
+        for seg in demo.meta.get("segments", {}):
+            cached_analysis(demo, CohortParams(), seg)
+
+    registry.prewarm = prewarm  # called in a background thread at startup
 
     def batch_or_404(batch_id: str):
         b = registry.get(batch_id)
@@ -113,9 +146,7 @@ def build_router(store: Store) -> tuple[APIRouter, Registry]:
     def analysis(request: Request, batch_id: str,
                  segment_by: str | None = Query(default=None)) -> dict:
         b = batch_or_404(batch_id)
-        report = analyse_cohort(b.prep, b.meta, params_from(request), segment_by=segment_by)
-        report["batch"]["id"] = b.id
-        return report
+        return cached_analysis(b, params_from(request), segment_by)
 
     @router.get("/batches/{batch_id}/participants")
     def participants(request: Request, batch_id: str) -> dict:

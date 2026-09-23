@@ -1,8 +1,8 @@
 """Where batches live between requests.
 
 Two sources: the built-in demonstration panel, generated deterministically
-from a seed on first use (so a fresh container on a free host has it without a
-database), and operator uploads, persisted in SQLite. Either way the expensive
+from a seed (baked into the container image at build time, or simulated on
+first use if no bake is present), and operator uploads, persisted in SQLite. Either way the expensive
 part — parsing and reducing to integer-coded arrays — happens once per process
 and is cached, so moving a slider re-runs the statistics and nothing else.
 """
@@ -11,10 +11,14 @@ from __future__ import annotations
 
 import gzip
 import io
+import os
+import pickle
 import threading
+import zlib
 from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pandas as pd
 
@@ -27,6 +31,19 @@ DEMO_ID = "demo"
 DEMO_SEED = 2026
 DEMO_N = 520
 CACHE_SIZE = 4
+
+#: Where a pre-built demo panel is baked into the container image. Simulating
+#: 175k trials is ~1 s on a real core and over a minute on a free-tier CPU
+#: slice; loading the baked copy is a fraction of a second on either.
+BAKED_DEMO = Path(os.environ.get("IMPLICITLAB_BAKED_DEMO", "cache/demo_panel.pkl"))
+
+
+def _demo_key() -> tuple:
+    """Identifies the demo panel a baked file was built from — including the
+    simulator's own source, so editing the generator invalidates a stale bake
+    rather than silently serving yesterday's panel."""
+    src = Path(__file__).with_name("simulate.py").read_bytes()
+    return (DEMO_N, DEMO_SEED, zlib.crc32(src))
 
 
 @dataclass(slots=True)
@@ -61,11 +78,33 @@ def _compact(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _load_baked():
+    """The baked demo panel, if present and built from the current parameters."""
+    try:
+        with BAKED_DEMO.open("rb") as fh:
+            blob = pickle.load(fh)
+    except (OSError, pickle.UnpicklingError, EOFError):
+        return None
+    if blob.get("key") != _demo_key():
+        return None
+    return blob["trials"], blob["meta"]
+
+
+def bake_demo(path: Path = BAKED_DEMO) -> None:
+    """Build the demo panel once and write it to ``path`` (run at image build)."""
+    sim = simulate_batch(DEMO_N, seed=DEMO_SEED)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("wb") as fh:
+        pickle.dump({"key": _demo_key(), "trials": _compact(sim.trials),
+                     "meta": sim.meta}, fh, protocol=pickle.HIGHEST_PROTOCOL)
+
+
 class Registry:
     def __init__(self, store: Store):
         self.store = store
         self._cache: OrderedDict[str, Batch] = OrderedDict()
         self._lock = threading.Lock()
+        self.prewarm = lambda: self.get(DEMO_ID)
 
     def _remember(self, batch: Batch) -> Batch:
         with self._lock:
@@ -105,15 +144,19 @@ class Registry:
         with self._lock:
             if DEMO_ID in self._cache:
                 return self._cache[DEMO_ID]
-            sim = simulate_batch(DEMO_N, seed=DEMO_SEED)
-            trials = _compact(sim.trials)
-            prep = prepare(trials, list(sim.meta["segments"]))
-            meta = {**sim.meta, "id": DEMO_ID}
+            baked = _load_baked()
+            if baked is not None:
+                trials, sim_meta = baked
+            else:
+                sim = simulate_batch(DEMO_N, seed=DEMO_SEED)
+                trials, sim_meta = _compact(sim.trials), sim.meta
+            prep = prepare(trials, list(sim_meta["segments"]))
+            meta = {**sim_meta, "id": DEMO_ID}
             report = {
                 "rows_read": len(trials), "rows_accepted": len(trials), "rows_rejected": 0,
                 "rejection_reasons": {}, "duplicates_removed": 0,
                 "participants": prep.n_participants, "attributes": prep.attrs,
-                "segment_variables": list(sim.meta["segments"]), "skipped_columns": {},
+                "segment_variables": list(sim_meta["segments"]), "skipped_columns": {},
                 "columns_renamed": {}, "warnings": [],
             }
             batch = Batch(DEMO_ID, meta, report, trials, prep,
@@ -140,3 +183,8 @@ class Registry:
         rows = [demo.summary() | {"built_in": True}]
         rows += [{**r, "built_in": False} for r in self.store.list_batches()]
         return rows
+
+
+if __name__ == "__main__":  # python -m app.cohort.registry  → bake the demo panel
+    bake_demo()
+    print(f"baked demo panel to {BAKED_DEMO}")

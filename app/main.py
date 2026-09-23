@@ -37,7 +37,7 @@ async def lifespan(_: FastAPI):
     Studio gets a dashboard, not a spinner — and on a free host that has just
     woken from sleep, that first person is usually the one who matters.
     """
-    threading.Thread(target=lambda: cohort_registry.get("demo"), daemon=True).start()
+    threading.Thread(target=cohort_registry.prewarm, daemon=True).start()
     yield
 
 
