@@ -315,10 +315,13 @@ def _story_slide(deck: Deck, report: dict, method: str, seg_label: str) -> None:
     c = sig[0]
     attr = attrs[c["attribute"]]
     pole = attr.get("pole_a") or c["attribute"]
-    a_brand = _brand(attr.get("target_a"))
-    hi, lo = (c["level_a"], c["level_b"]) if (c["diff"] or 0) > 0 else (c["level_b"], c["level_a"])
-    s = deck.slide(f"{seg_label} moves {pole}", f"Segment story · stronger {a_brand}–{pole} "
-                   f"link among {hi} than {lo}")
+    # Phrased by the brand the first level leans further toward, levels in the
+    # same order as the numbers, so a negative gap never reads backwards.
+    toward = _brand(attr.get("target_a" if (c["diff"] or 0) > 0 else "target_b"))
+    lean = (f"{c['level_a']} respondents lean further toward {toward} on {pole} than "
+            f"{c['level_b']} respondents")
+    s = deck.slide(f"{seg_label} moves {pole}", f"Segment story · {c['level_a']} lean further "
+                   f"toward {toward} than {c['level_b']}")
     # Two big-number callouts.
     col_w = Inches(3.7)
     for i, (lvl, mean, n) in enumerate(((c["level_a"], c["mean_a"], c["n_a"]),
@@ -347,8 +350,7 @@ def _story_slide(deck: Deck, report: dict, method: str, seg_label: str) -> None:
               color=WARN, space_before=6)
     g = c.get("hedges_g")
     if g is not None:
-        _para(tf, f"Reading it: {hi} respondents pair {a_brand} with {pole} measurably faster "
-                  f"than {lo} respondents — a gap of {abs(c['diff']):.2f} D units, or "
+        _para(tf, f"Reading it: {lean} — a gap of {abs(c['diff']):.2f} D units, or "
                   f"{abs(g):.2f} standard deviations of respondent-level D.",
               size=12, color=INK_2, space_before=12)
     seg_note = (report["batch"].get("segments", {}).get(report.get("segment_by")) or {}).get("note")

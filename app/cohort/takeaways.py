@@ -116,21 +116,33 @@ def build_takeaways(report: dict, method: str) -> list[dict]:
     sig = [c for c in report["comparisons"] if c[method].get("sig")]
     sig.sort(key=lambda c: -abs(c.get("hedges_g") or 0))
     attrs = {a["key"]: a for a in report["attributes"]}
-    for c in sig[:3]:
-        attr = attrs[c["attribute"]]
-        pole = attr.get("pole_a", c["attribute"])
-        a_brand = _brand(attr.get("target_a", "Target A"))
-        hi, lo = (c["level_a"], c["level_b"]) if (c["diff"] or 0) > 0 else (c["level_b"], c["level_a"])
-        low = " Low base — indicative only." if c["low_base"] else ""
+    # One takeaway per attribute: with three or more levels several pairwise
+    # comparisons can clear the bar for the same attribute, and repeating the
+    # headline reads as padding. Lead with the largest gap, name the rest.
+    by_attr: dict[str, list[dict]] = {}
+    for c in sig:
+        by_attr.setdefault(c["attribute"], []).append(c)
+    for attr_key, group in list(by_attr.items())[:3]:
+        c = group[0]
+        attr = attrs[attr_key]
+        pole = attr.get("pole_a", attr_key)
+        # Phrase it by the brand the first level leans further toward, and keep
+        # the levels in the same order as the numbers that follow them.
+        toward = _brand(attr.get("target_a" if (c["diff"] or 0) > 0 else "target_b", ""))
+        more = ""
+        if len(group) > 1:
+            others = [f"{x['level_a']} vs {x['level_b']}" for x in group[1:]]
+            more = f" Also significant: {', '.join(others)}."
+        low = " Low base — indicative only." if any(x["low_base"] for x in group) else ""
         out.append({
             "kind": "segment",
-            "attribute": c["attribute"],
+            "attribute": attr_key,
             "headline": f"{seg_label} moves {pole}",
             "detail": (
-                f"The {a_brand}–{pole} association is stronger among {hi} than {lo} "
-                f"respondents (D {_fmt_d(c['mean_a'])} vs {_fmt_d(c['mean_b'])}; difference "
+                f"{c['level_a']} respondents lean further toward {toward} on {pole} than "
+                f"{c['level_b']} respondents (D {_fmt_d(c['mean_a'])} vs {_fmt_d(c['mean_b'])}; difference "
                 f"{_fmt_d(c['diff'])}, 95% CI [{_fmt_d(c['ci_low'])}, {_fmt_d(c['ci_high'])}], "
-                f"{_fmt_q(c[method].get('q'))}; Hedges' g = {c['hedges_g']:.2f}).{low}"
+                f"{_fmt_q(c[method].get('q'))}; Hedges' g = {c['hedges_g']:.2f}).{more}{low}"
             ),
             "tone": "positive",
         })

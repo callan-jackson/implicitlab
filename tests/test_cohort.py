@@ -346,3 +346,18 @@ def test_api_upload_then_analyse(tmp_path, monkeypatch):
     assert c.get("/api/cohort/batches/nope/analysis").status_code == 404
     listed = c.get("/api/cohort/batches").json()["batches"]
     assert listed[0]["id"] == "demo" and any(b["id"] == bid for b in listed)
+
+
+def test_segment_takeaway_reads_the_right_way_round(big_panel):
+    # Regression: a negative gap once printed the levels in one order and the
+    # D-values in the other, so "stronger among X" pointed at the wrong group.
+    sim, prep = big_panel
+    r = analyse_cohort(prep, sim.meta, segment_by="age_band", include_distributions=False)
+    seg = [t for t in r["takeaways"]["permutation"] if t["kind"] == "segment"]
+    assert len({t["headline"] for t in seg}) == len(seg), "one takeaway per attribute"
+    eco = next(t for t in seg if t.get("attribute") == "eco")
+    top = next(c for c in r["comparisons"]
+               if c["attribute"] == "eco" and c["permutation"]["sig"])
+    assert top["diff"] < 0
+    assert eco["detail"].startswith(f"{top['level_a']} respondents lean further toward Northvane")
+    assert f"D {top['mean_a']:+.2f} vs {top['mean_b']:+.2f}" in eco["detail"]
