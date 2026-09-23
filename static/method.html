@@ -25,6 +25,7 @@
     <div class="masthead__spacer"></div>
     <nav class="masthead__links">
       <a href="/">Run a test</a>
+      <a href="/studio">Studio</a>
       <a href="/api/docs">API</a>
       <a href="https://github.com/callan-jackson/implicitlab" target="_blank" rel="noopener">Code ↗</a>
     </nav>
@@ -301,16 +302,73 @@
       carries the configuration that produced it.</li>
   </ul>
 
-  <h2>9. Limitations</h2>
+  <h2>9. From one participant to a panel</h2>
+  <p>
+    The <a href="/studio">Studio</a> analyses a whole fieldwork batch. The unit of
+    analysis changes from the trial to the <strong>participant</strong>: each respondent
+    contributes one D per attribute, and every interval and test is over respondents.
+  </p>
+  <h3>Participant screening, in order</h3>
+  <div class="scroll-x">
+  <table class="data">
+    <thead><tr><th>Stage</th><th>Rule (default)</th><th>Why here</th></tr></thead>
+    <tbody>
+      <tr><td>Incomplete data</td><td>every attribute task present; ≥ 4 trials in every scored cell</td><td>complete-case, so every attribute is read on the same people</td></tr>
+      <tr><td>Latency screen</td><td>&gt; 10% of combined-block trials under 300 ms</td><td>Greenwald et al. (2003) step 3; evaluated <em>before</em> any lower trim, so trimming cannot hide a fast responder</td></tr>
+      <tr><td>Accuracy screen</td><td>accuracy &lt; 75% on the combined blocks</td><td>not in the 2003 algorithm; a common commercial rule for guessing</td></tr>
+      <tr><td>Trimming</td><td>a cell below 4 trials after the trial-level trim</td><td>only fires under aggressive trimming</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>
+    Trial-level trimming is separate: the 10,000 ms upper cut-off by default, and no
+    lower trim, because fast trials are signal and the latency screen is what deals with
+    fast <em>people</em>. Both are sliders in the Studio, and the funnel, D-scores and
+    intervals update as they move.
+  </p>
+  <h3>Two families of test</h3>
+  <p>
+    <strong>Parametric:</strong> each respondent's difference in mean <em>log</em> latency
+    between pairings, tested with a one-sample t-test, and Welch's t-test between
+    segments. Raw latencies are right-skewed (skew ≈ 1.9 in the demonstration panel);
+    their logs are close to symmetric (≈ 0.3–0.45), which is what a t-test needs.
+    <strong>Non-parametric:</strong> sign-flip permutation (one-sample) and label-shuffle
+    permutation (between segments) on D itself, 5,000 draws each. The Studio switches
+    between them and counts the significance calls that change.
+  </p>
+  <h3>Multiple comparisons</h3>
+  <p>
+    An attribute × segment grid is many tests at once, and at α = .05 an uncorrected grid
+    of twenty null cells produces one false positive on average. Every p-value is
+    reported with a Benjamini–Hochberg q-value within its family (associations; segment
+    differences), and significance flags are set on q &lt; .05. False-discovery-rate
+    control rather than Bonferroni because this is a screening grid: Bonferroni protects
+    against any single false positive at the price of missing real effects, which is the
+    wrong trade for a brand-image read that will be followed up.
+  </p>
+  <h3>One source of numbers</h3>
+  <p>
+    The dashboard, the Excel workbook and the PowerPoint deck call the same function with
+    the same parameters, and the parameters are written into both files. The deck's
+    executive takeaways are written by rules, not a model: a result that fails q &lt; .05
+    is never given a direction, D is always described as relative, and a significant but
+    negligible gap is called small. Cells under 30 respondents are flagged as low base.
+  </p>
+
+  <h2>10. Limitations</h2>
   <ul>
     <li>Word stimuli only. Production pack testing uses images, which changes onset
       timing (decode and paint cost) and needs preloading and per-image onset
       verification.</li>
     <li>Desktop keyboard only. Touch changes the motor component substantially and
       would need its own calibration.</li>
-    <li>Individual-level reporting, with all the caveats in section 6. Group-level
-      aggregation, power analysis and mixed-effects modelling across a panel are the
-      obvious next step and are not built.</li>
+    <li>Cohort inference runs on per-participant summaries. A trial-level
+      mixed-effects model with crossed random effects for participants and stimuli
+      would use the data more fully and generalise over stimuli as well as people; it,
+      and power analysis for sample planning, are not built.</li>
+    <li>The cohort scorer implements the built-in error penalty only. Uploads from tasks
+      without forced error correction are flagged at ingestion rather than silently
+      re-scored.</li>
     <li>The comparison distribution shown at the end is a convenience sample of
       whoever opened the link. It is not a norm.</li>
     <li>The speeded attribute-association format that commercial platforms mostly

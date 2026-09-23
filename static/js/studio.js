@@ -352,6 +352,19 @@ async function download(btn, what) {
   const label = btn.textContent;
   btn.classList.add('btn--busy');
   btn.textContent = `Building ${what.toLowerCase()}…`;
+  // On the free-tier host a full-panel workbook takes tens of seconds (about
+  // three on a laptop). A counting button reads as work; a frozen one as a hang.
+  const started = Date.now();
+  const tick = setInterval(() => {
+    const secs = Math.round((Date.now() - started) / 1000);
+    btn.textContent = `Building ${what.toLowerCase()}… ${secs}s`;
+    if (secs === 6) {
+      $('uploadStatus').innerHTML = banner('info', 'ⓘ',
+        `Building the ${esc(what.toLowerCase())} from all ${state.report ? state.report.sample.recruited : ''} `
+        + 'respondents. The hosted demo runs on a shared free-tier CPU, so this can take up to a minute; '
+        + 'on a normal machine it takes a few seconds.');
+    }
+  }, 1000);
   try {
     const res = await fetch(btn.href);
     if (!res.ok) {
@@ -374,6 +387,7 @@ async function download(btn, what) {
   } catch (err) {
     $('uploadStatus').innerHTML = banner('bad', '✗', `<strong>Could not build the ${esc(what)}.</strong> ${esc(err.message)}`);
   } finally {
+    clearInterval(tick);
     btn.classList.remove('btn--busy');
     btn.textContent = label;
   }

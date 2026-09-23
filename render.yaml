@@ -1,8 +1,8 @@
 # Render Blueprint: one free web service built from the Dockerfile.
 #
-# Deploys follow GitHub: with autoDeployTrigger "checksPass", Render waits for
-# the repository's CI checks (the test workflow) to pass on a commit before it
-# deploys that commit, so a red build never reaches the live demo.
+# Deploys are triggered by .github/workflows/deploy.yml through the service's
+# deploy hook, only after the test workflow passes on a commit, so a red build
+# never reaches the live demo.
 services:
   - type: web
     name: implicitlab
@@ -11,7 +11,7 @@ services:
     region: frankfurt
     dockerfilePath: ./Dockerfile
     healthCheckPath: /api/health
-    autoDeployTrigger: checksPass
+    autoDeploy: false  # deploys come from .github/workflows/deploy.yml after CI passes
     envVars:
       - key: ENVIRONMENT
         value: production

@@ -1,11 +1,15 @@
 # ImplicitLab
 
-**A browser-based implicit association testing platform.** Millisecond
-response-latency capture, the Greenwald (2003) *D*-score with its data-quality
-exclusions, distribution-free resampling inference, and an LLM reporting layer
-kept strictly downstream of the statistics.
+**A browser-based implicit association testing platform, from single trial to
+client deck.** Millisecond response-latency capture, the Greenwald (2003)
+*D*-score with its data-quality exclusions, distribution-free resampling
+inference, and an LLM reporting layer kept strictly downstream of the
+statistics — plus a **cohort Studio** that ingests a raw panel dump, screens
+participants, segments the audience, tests every result two ways with
+false-discovery-rate control, and exports a formatted Excel workbook and a
+PowerPoint deck.
 
-**[Live demo →](https://implicitlab-callan.azurewebsites.net)** · **[Method →](https://implicitlab-callan.azurewebsites.net/method)** · **[API docs →](https://implicitlab-callan.azurewebsites.net/api/docs)**
+**[Live demo →](https://implicitlab.onrender.com)** · **[Studio →](https://implicitlab.onrender.com/studio)** · **[Method →](https://implicitlab.onrender.com/method)** · **[API docs →](https://implicitlab.onrender.com/api/docs)**
 
 ---
 
@@ -26,6 +30,8 @@ ImplicitLab runs the real seven-block instrument end to end:
 | **Inference** | Percentile bootstrap CI and a permutation test, both distribution-free, plus a split-half stability diagnostic |
 | **Reporting** | Azure OpenAI writes the executive summary from computed statistics only, and every number it emits is verified against them before publication |
 | **Data** | Trial-level CSV and full session JSON export; every session reproducible from a `(study, seed)` pair |
+| **Cohorts** | Batch CSV/JSON ingestion, participant-level screening with a live exclusion funnel, segmentation, parametric *and* permutation tests with Benjamini–Hochberg correction |
+| **Deliverables** | Five-tab Excel workbook (pandas + openpyxl) and a nine-slide PowerPoint deck (python-pptx), built from the same function as the dashboard |
 
 ## Why the details matter
 
@@ -52,6 +58,87 @@ reliability is around *r* = .50, and Cummins & Hussey (2026) report that a *D*
 of exactly zero carries a 95% CI of roughly ±0.38. So this reports an interval,
 never a verdict, and refuses to produce a number at all when the exclusion
 criteria fire.
+
+## Cohort analysis — the Studio
+
+A single D-score is one person on one occasion, and the instrument is not built
+to be read that way. A commercial study recruits a panel, runs everyone through
+a battery of brand-attribute tests, and asks which associations hold across the
+audience and between segments of it. `/studio` is that workflow:
+
+```
+raw panel dump ─▶ ingest ─▶ screen participants ─▶ score every task ─▶ group inference ─▶ dashboard
+  (CSV / JSON)     report      exclusion funnel      vectorised D       bootstrap CIs       workbook
+                   of every    (live counts)         (pinned to the     t on log-RT +       deck
+                   rejected                           reference)         permutation, FDR
+                   row
+```
+
+**Ingestion.** One row per trial, participant variables repeated on each row —
+the shape Gorilla, Inquisit and most panel platforms export — or JSON with a
+separate participants table. Column aliases are mapped (`rt`, `RT_ms`,
+`Respondent ID`…), booleans in any common spelling are parsed, and every
+rejected row is counted with its reason. Any non-trial column that is constant
+within participants becomes a segmentation variable; continuous ones (age in
+years) are cut into tertiles; columns that vary within participants are
+recognised as trial-level and left alone.
+
+**Screening is per participant, and ordered.** Incomplete data → latency screen
+(> 10% of trials under 300 ms) → accuracy screen (< 75%) → trials remaining
+after trimming. The funnel shows how many fell at each stage, live, as the
+thresholds move. The latency screen runs *before* any lower trim, so dragging
+the trim slider cannot hide a fast responder by deleting the evidence against
+them. Participants are dropped whole, so every attribute is analysed on the
+same people.
+
+**Scoring 1,500 IATs in 6 ms.** Re-scoring a panel with the reference
+implementation takes seconds — too slow to re-run on every slider move — so
+`app/cohort/scoring.py` computes D for every (participant, attribute) task at
+once with `np.bincount` group-bys. Two implementations of one algorithm are a
+liability unless something pins them together:
+`test_vectorised_d_matches_reference_scorer` scores every task both ways and
+requires agreement to 1e-9 (it is 1.6 × 10⁻¹⁵ in practice).
+
+**Two families of test, always both.** *Parametric*: t-tests on each
+participant's difference in mean **log** RT — raw latencies are right-skewed,
+their logs are nearly symmetric — with Welch's test between segments.
+*Non-parametric*: sign-flip and label-shuffle permutation tests on D itself.
+The dashboard switches between them instantly and counts the significance calls
+that change. CIs are percentile bootstraps **over participants**, the unit of
+sampling at group level.
+
+**Multiple comparisons are corrected.** An attribute × segment grid is a lot of
+tests, and an uncorrected grid will put a false positive in a client deck.
+Every p-value carries a Benjamini–Hochberg q-value within its family, and the
+significance flags are set on q. Cells under 30 respondents are marked low
+base, as agencies do.
+
+**Deliverables come from the same function as the screen.** The Excel workbook
+(Executive Summary · Segment Breakdown · Participant D-scores · Raw Trial Log ·
+Method & Parameters) and the PowerPoint deck (takeaways, sample funnel,
+heatmap, forest plot, the segment story, why the stats are non-parametric,
+robustness, method appendix) both call `analyse_cohort` with the dashboard's
+exact parameters, and write those parameters into the file. A deliverable that
+cannot say which exclusion rules produced it cannot be defended.
+
+**Takeaways are written by rules, not a model.** The single-session report
+uses an LLM with a numeric verifier; a client deck goes out under the agency's
+name, its claims come in a handful of fixed shapes, and those are what a
+template does reliably. The rules: a result that fails q < .05 is never given a
+direction; D is described as relative ("more associated with Premium than
+Northvane"), never absolute; a significant-but-negligible effect is called
+small.
+
+**The demonstration panel has known answers.** 520 synthetic respondents,
+three attributes (Premium, Eco-friendly, Trustworthy), four segment variables,
+and deliberately planted effects: loyalty moves Premium, the campaign cell
+moves Trust, 18–34s move Eco — and Device moves nothing. It also contains fast
+responders, guessers, dropouts and people who walked away mid-trial at
+online-panel rates. The test suite asserts that every planted respondent is
+screened at the right stage, every planted effect is found under both methods,
+and the null variable stays null. **Download sample CSV** in the Studio gives
+you a raw dump in the upload format, so the ingestion path can be demonstrated
+on a real file.
 
 ## The LLM boundary
 
@@ -107,6 +194,17 @@ app/
 │   ├── prompts.py     system prompt, payload assembly, deterministic fallback
 │   ├── verify.py      numeric guardrail
 │   └── client.py      Azure OpenAI with a never-fails fallback path
+├── cohort/            panel analysis — see "Cohort analysis" above
+│   ├── ingest.py      raw dump → validated trial table + ingest report
+│   ├── scoring.py     participant screening + vectorised D
+│   ├── stats.py       bootstrap, t on log-RT, permutation, Benjamini–Hochberg
+│   ├── analysis.py    (batch, parameters) → the complete cohort report
+│   ├── takeaways.py   rule-written executive bullets
+│   ├── charts.py      matplotlib figures for the deliverables
+│   ├── export_xlsx.py five-tab workbook
+│   ├── export_pptx.py nine-slide deck
+│   ├── simulate.py    synthetic panel with planted effects
+│   └── registry.py    batch cache + persistence
 ├── analysis.py        stats first, model second, always
 ├── simulate.py        ex-Gaussian synthetic respondents
 ├── storage.py         SQLite
@@ -116,6 +214,7 @@ static/
 ├── js/timing.js       onset measurement, refresh calibration, stall watchdog
 ├── js/engine.js       trial runner with forced error correction
 ├── js/dashboard.js    Chart.js report
+├── js/studio.js       cohort Studio: live parameters, funnel, heatmap, forest
 └── assets/            brand lockup, favicons, social card — all generated
 
 tools/
@@ -158,9 +257,20 @@ engine with no configuration. To enable the model path, copy `.env.example` to
 ./run_tests.sh
 ```
 
-78 tests — 68 in Python covering design, scoring, quality and the LLM
-guardrail, plus 10 in Node covering the browser trial engine, which is the one
-component Python cannot reach. The ones worth reading:
+115 tests — Python covering design, scoring, quality, the LLM
+guardrail, the cohort pipeline and the exports, plus 10 in Node covering the
+browser trial engine, which is the one component Python cannot reach. The ones
+worth reading:
+
+- `test_cohort.py::test_vectorised_d_matches_reference_scorer` — the fast
+  cohort scorer against the reference implementation, every task in a panel,
+  with and without trimming, to 1e-9.
+- `test_cohort.py::test_planted_segment_effects_are_recovered` and
+  `test_null_variable_stays_null` — both statistical methods find the effects
+  built into the simulated panel, and neither finds one in the variable that
+  has none.
+- `test_cohort.py::test_lower_trim_cannot_rescue_a_fast_responder` — the
+  latency screen is evaluated before trimming.
 
 - `test_dscore.py::test_d_matches_hand_computation` — reproduces a *D* worked
   out by hand, to ten decimal places.
@@ -185,24 +295,49 @@ component Python cannot reach. The ones worth reading:
 
 ## Deployment
 
-Azure App Service (Linux, Python 3.13), with Azure OpenAI for the insight
-layer. Configuration is entirely environment-driven; no secret is in the repo.
+A Docker image (`Dockerfile`) on Render's free tier, described by
+`render.yaml`. Deployment is continuous: a push to `main` runs the test
+workflow, and only when it passes does `deploy.yml` call Render's deploy hook
+for that exact commit. The
+520-person demonstration panel is baked into the image at build time, and the
+default Studio views are computed in the background at boot, so a cold start
+does not mean a slow first page. Configuration is environment-driven and no
+secret is in the repository.
 
 ```bash
-az webapp deploy -g <rg> -n <app> --src-path implicitlab.zip --type zip
+docker build -t implicitlab . && docker run -p 7860:7860 implicitlab
 ```
+
+The free tier sleeps after fifteen minutes idle (the first request then takes
+under a minute) and runs on a fraction of a CPU, so the Studio's live sliders
+are noticeably quicker on a laptop, where a full re-analysis of the panel takes
+about 150 ms. Analyses are memoised, so any view visited once is instant. The
+filesystem is ephemeral: uploaded batches and collected sessions last until the
+instance restarts. A production deployment would put batches in object storage
+behind authentication; storage sits behind one module (`storage.py`) for that
+reason.
+
+The app also runs unchanged on Azure App Service (`startup.sh`), where it was
+first deployed, with Azure OpenAI behind the insight layer. Without model
+credentials the deterministic report engine is used, and the report says so.
 
 ## Limitations
 
-Stated on the [method page](https://implicitlab-callan.azurewebsites.net/method)
+Stated on the [method page](https://implicitlab.onrender.com/method)
 as well, because a research tool that hides them is not a research tool:
 
 - Word stimuli only. Production pack testing uses images, which changes onset
   timing and needs preloading plus per-image onset verification.
 - Desktop keyboard only. Touch changes the motor component substantially.
-- Individual-level reporting, with all the reliability caveats above. Group
-  aggregation, power analysis and mixed-effects modelling across a panel are the
-  obvious next step and are not built.
+- Cohort inference is on per-participant summaries (D, mean log-RT
+  difference). That is the standard applied analysis and it is what the
+  deliverables report, but a trial-level mixed-effects model (random
+  intercepts for participants and stimuli) would use the data more fully and
+  generalise over stimuli as well as people. Power analysis for planning
+  sample sizes is not built.
+- The cohort scorer implements the built-in error penalty only (forced
+  correction, time-to-correct scored). Uploads from tasks that did not force
+  correction are flagged at ingestion rather than silently re-scored.
 - The comparison distribution is a convenience sample of whoever opened the
   link. It is not a norm.
 - The speeded attribute-association format that commercial platforms mostly

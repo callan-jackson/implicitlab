@@ -1,0 +1,28 @@
+name: deploy
+
+# Continuous deployment to Render. Runs only after the test workflow has passed
+# on main, then calls the service's deploy hook pinned to the tested commit, so
+# a red build never reaches the live demo. The hook URL is a repository secret.
+on:
+  workflow_run:
+    workflows: [tests]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render deploy of the tested commit
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "RENDER_DEPLOY_HOOK is not set; skipping deploy."
+            exit 0
+          fi
+          curl -fsS -X POST "${HOOK}&ref=${SHA}" > /dev/null
+          echo "Deploy of ${SHA::7} requested."
